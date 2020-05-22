@@ -1,0 +1,4 @@
+git+git://github.com/funkelab/funlib.learn.torch@a548bbd08db110ceec7337947e474236a9aee243#egg=funlib.evaluate
+gunpowder
+torch
+zarr
