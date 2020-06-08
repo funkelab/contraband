@@ -2,6 +2,8 @@ snapshots
 *.sw[pmno]
 model_checkpoint*
 data
+snapshots/
+checkpoints/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

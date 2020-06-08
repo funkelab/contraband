@@ -5,10 +5,90 @@ import math
 import numpy as np
 import torch
 import zarr
-from model import ContrastiveVolumeNet, contrastive_volume_loss
+from collections.abc import Iterable
+import skimage.filters as filters
 
-logging.basicConfig(level=logging.INFO)
 
+class SetDtype(gp.BatchFilter):
+
+    def __init__(self, array, dtype):
+        self.array = array
+        self.dtype = dtype
+
+    def setup(self):
+        self.enable_autoskip()
+        self.updates(self.array, self.spec[self.array])
+
+    def prepare(self, request):
+        deps = gp.BatchRequest()
+        deps[self.array] = request[self.array].copy()
+        return deps
+
+    def process(self, batch, request):
+        array = batch.arrays[self.array]
+        array.data = array.data.astype(self.dtype)
+        array.spec.dtype = self.dtype
+
+class Blur(gp.BatchFilter):
+    '''Add random noise to an array. Uses the scikit-image function skimage.filters.gaussian
+    See scikit-image documentation for more information.
+
+    Args:
+
+        array (:class:`ArrayKey`):
+
+            The array to blur. 
+
+        sigma (``scalar or list``):
+
+            The st. dev to use for the gaussian filter. If scalar it will be projected to match the
+            number of ROI dims. If give an list or numpy array, it must match the number of ROI dims.
+
+    '''
+
+    def __init__(self, array, sigma=1):
+        self.array = array
+        self.sigma = sigma
+        self.filter_radius = np.ceil(np.array(self.sigma) * 3)
+
+    def setup(self):
+        self.enable_autoskip()
+        self.updates(self.array, self.spec[self.array])
+
+    def prepare(self, request):
+        deps = gp.BatchRequest()
+        spec = request[self.array].copy()
+        
+        if isinstance(self.sigma, Iterable):
+            assert spec.roi.dims() == len(self.sigma), ("Dimensions given for sigma (" 
+                   + str(len(self.sigma)) + ") is not equal to the ROI dims (" 
+                   + str(spec.roi.dims()) + ")")
+        else:
+            self.filter_radius = [self.filter_radius for dim in range(spec.roi.dims())]
+
+        self.grow_amount = gp.Coordinate([radius for radius in self.filter_radius])
+
+        grown_roi = spec.roi.grow(
+                self.grow_amount,
+                self.grow_amount)
+        grown_roi.snap_to_grid(self.spec[self.array].voxel_size)
+
+        spec.roi = grown_roi
+        deps[self.array] = spec
+        return deps
+
+    def process(self, batch, request):
+
+        raw = batch.arrays[self.array]
+        roi = raw.spec.roi
+        
+        if not isinstance(self.sigma, Iterable):
+            self.sigma = [0 for dim in range(len(raw.data.shape) - roi.dims())] \
+                         + [self.sigma for dim in range(roi.dims())]
+
+        raw.data = filters.gaussian(raw.data, sigma=self.sigma, mode='constant', preserve_range=True, multichannel=False)
+        
+        batch[self.array].crop(request[self.array].roi)
 
 class InspectBatch(gp.BatchFilter):
 
@@ -193,136 +273,3 @@ class AddSpatialDim(gp.BatchFilter):
 
     def __insert_dim(self, a, s, dim=0):
         return a[:dim] + (s,) + a[dim:]
-
-
-if __name__ == "__main__":
-
-    num_iterations = int(1e6)
-
-    unet = funlib.learn.torch.models.UNet(
-        1, 12, 6,
-        [(2, 2), (2, 2), (2, 2)],
-        kernel_size_down=[[(3, 3), (3, 3)]]*4,
-        kernel_size_up=[[(3, 3), (3, 3)]]*3,
-        constant_upsample=True)
-    model = ContrastiveVolumeNet(unet, 20, 3)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
-    temperature = 1.0
-
-    def loss(emb_0, emb_1, locations_0, locations_1):
-        return contrastive_volume_loss(
-            emb_0,
-            emb_1,
-            locations_0,
-            locations_1,
-            temperature)
-
-    filename = 'data/ctc/Fluo-N2DH-SIM+.zarr'
-
-    raw_0 = gp.ArrayKey('RAW_0')
-    points_0 = gp.GraphKey('POINTS_0')
-    locations_0 = gp.ArrayKey('LOCATIONS_0')
-    emb_0 = gp.ArrayKey('EMBEDDING_0')
-    raw_1 = gp.ArrayKey('RAW_1')
-    points_1 = gp.GraphKey('POINTS_1')
-    locations_1 = gp.ArrayKey('LOCATIONS_1')
-    emb_1 = gp.ArrayKey('EMBEDDING_1')
-
-    request = gp.BatchRequest()
-    request.add(raw_0, (1, 260, 260))
-    request.add(raw_1, (1, 260, 260))
-    request.add(points_0, (1, 168, 168))
-    request.add(points_1, (1, 168, 168))
-    request[locations_0] = gp.ArraySpec(nonspatial=True)
-    request[locations_1] = gp.ArraySpec(nonspatial=True)
-
-    snapshot_request = gp.BatchRequest()
-    snapshot_request[emb_0] = gp.ArraySpec(roi=request[points_0].roi)
-    snapshot_request[emb_1] = gp.ArraySpec(roi=request[points_1].roi)
-
-    source_shape = zarr.open(filename)['train/raw'].shape
-    raw_roi = gp.Roi((0, 0, 0), source_shape)
-    sources = tuple(
-        gp.ZarrSource(
-            filename,
-            {
-                raw: 'train/raw'
-            },
-            # fake 3D data
-            array_specs={
-                raw: gp.ArraySpec(
-                    roi=raw_roi,
-                    voxel_size=(1, 1, 1),
-                    interpolatable=True)
-            }) +
-        gp.Normalize(raw, factor=1.0/4) +
-        gp.Pad(raw, (0, 200, 200)) +
-        AddRandomPoints(points, for_array=raw, density=0.0005) +
-        gp.ElasticAugment(
-            control_point_spacing=(1, 10, 10),
-            jitter_sigma=(0, 0.1, 0.1),
-            rotation_interval=(0, math.pi/2)) # +
-        # gp.SimpleAugment(
-            # mirror_only=(1, 2),
-            # transpose_only=(1, 2)) +
-        # gp.NoiseAugment(raw, var=0.01)
-
-        for raw, points in zip([raw_0, raw_1], [points_0, points_1])
-    )
-
-    pipeline = (
-        sources +
-        gp.MergeProvider() +
-        gp.Crop(raw_0, raw_roi) +
-        gp.RandomLocation() +
-        PrepareBatch(
-            raw_0, raw_1,
-            points_0, points_1,
-            locations_0, locations_1) +
-        gp.PreCache() +
-        gp.torch.Train(
-            model, loss, optimizer,
-            inputs={
-                'raw_0': raw_0,
-                'raw_1': raw_1
-            },
-            loss_inputs={
-                'emb_0': emb_0,
-                'emb_1': emb_1,
-                'locations_0': locations_0,
-                'locations_1': locations_1
-            },
-            outputs={
-                2: emb_0,
-                3: emb_1
-            },
-            array_specs={
-                emb_0: gp.ArraySpec(voxel_size=(1, 1)),
-                emb_1: gp.ArraySpec(voxel_size=(1, 1))
-            }) +
-        # everything is 3D, except emb_0 and emb_1
-        AddSpatialDim(emb_0) +
-        AddSpatialDim(emb_1) +
-        # now everything is 3D
-        RemoveChannelDim(raw_0) +
-        RemoveChannelDim(raw_1) +
-        RemoveChannelDim(emb_0) +
-        RemoveChannelDim(emb_1) +
-        gp.Snapshot(
-            output_filename='it{iteration}.hdf',
-            dataset_names={
-                raw_0: 'raw_0',
-                raw_1: 'raw_1',
-                points_0: 'points_0',
-                points_1: 'points_1',
-                emb_0: 'emb_0',
-                emb_1: 'emb_1'
-            },
-            additional_request=snapshot_request,
-            every=500) +
-        gp.PrintProfilingStats(every=10)
-    )
-
-    with gp.build(pipeline):
-        for i in range(num_iterations):
-            batch = pipeline.request_batch(request)
