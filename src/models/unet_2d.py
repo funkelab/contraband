@@ -45,7 +45,7 @@ class inferencing_unet_2d(base_unet_2d):
 
     def __init__(self, params):
         super().__init__(params)
-        self.model = InferencingContrastiveVolumeNet(self.unet, 20, 3)
+        self.model = InferencingContrastiveVolumeNet(self.unet, 20, 2)
 
     def forward(self, **kwargs):
         return self.model.forward(**kwargs)

@@ -8,7 +8,7 @@ import math
 import numpy as np
 import torch
 import zarr
-from pipelines.utils import Blur, InspectBatch, RemoveChannelDim, AddRandomPoints, PrepareBatch, AddSpatialDim, SetDtype
+from pipelines.utils import Blur, InspectBatch, RemoveChannelDim, AddRandomPoints, PrepareBatch, AddSpatialDim, SetDtype, AddChannelDim
 from skimage import data, io
 from matplotlib import pyplot as plt
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
@@ -36,7 +36,7 @@ class standard_2d():
                 locations_1,
                 temperature)
         self.training_loss = loss
-        self.val_loss = torch.nn.CrossEntropyLoss()
+        self.val_loss = torch.nn.MSELoss()
 
     def _make_train_augmentation_pipeline(self, raw, source):
         if 'elastic_train' in self.params and self.params['elastic_train']:
@@ -205,7 +205,6 @@ class standard_2d():
 
         request = gp.BatchRequest()
         request.add(raw, (1, 260, 260))
-        request.add(gt_labels, (1, 260, 260))
         request.add(gt_aff, (1, 168, 168))
         request.add(predictions, (1, 168, 168))
         
@@ -235,24 +234,23 @@ class standard_2d():
                         interpolatable=True,
                         dtype=np.uint32)
                     }) +
-            SetDtype(gt_labels, np.float32) +
+            # SetDtype(gt_aff, np.uint8) +
             gp.Normalize(raw, factor=1.0/4) +
             gp.Pad(raw, (0, 200, 200)) + 
-            gp.Pad(gt_labels, (0, 200, 200)) + 
-            gp.GrowBoundary(
-                gt_labels,
-                steps=3,
-                only_xy=True) + 
-            gp.AddAffinities([[0,0,0], [0, -1, 0], [0, 0,-1]], gt_labels, gt_aff)
-        )
-        source = self._make_val_augmentation_pipeline(raw, source) 
-        
+            gp.Pad(gt_labels, (0, 300, 300)) + 
+            gp.AddAffinities([[0, -1, 0], [0, 0, -1]],
+                             gt_labels, gt_aff))
+        source = self._make_val_augmentation_pipeline(raw, source)
 
         pipeline = (
             source +
             gp.Crop(raw, raw_roi) +
             gp.Crop(gt_labels, gt_roi) +
+            #gp.Crop(gt_aff, gt_roi) +
             gp.RandomLocation() +
+            RemoveChannelDim(gt_aff, 1) +
+            AddChannelDim(gt_aff) +
+            AddChannelDim(raw) +
             gp.PreCache() +
             gp.torch.Train(
                 model, self.val_loss, optimizer,
@@ -260,8 +258,8 @@ class standard_2d():
                     'raw': raw
                 },
                 loss_inputs={
-                    'predictions': predictions,
-                    'gt_labels': gt_labels
+                    0: predictions,
+                    1: gt_aff
                 },
                 outputs={
                     0:predictions
@@ -272,6 +270,7 @@ class standard_2d():
                 log_dir=self.logdir,
                 log_every=self.log_every
             ) + 
+            RemoveChannelDim(predictions, axis=2) + 
             AddSpatialDim(predictions) +
             # now everything is 3D
             RemoveChannelDim(raw) +

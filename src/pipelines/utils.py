@@ -26,7 +26,7 @@ class SetDtype(gp.BatchFilter):
 
     def process(self, batch, request):
         array = batch.arrays[self.array]
-        array.data = array.data.astype(self.dtype)
+        # array.data = array.data.astype(self.dtype)
         array.spec.dtype = self.dtype
 
 class Blur(gp.BatchFilter):
@@ -102,16 +102,36 @@ class InspectBatch(gp.BatchFilter):
 
 class RemoveChannelDim(gp.BatchFilter):
 
-    def __init__(self, array):
+    def __init__(self, array, axis=0):
         self.array = array
+        self.axis = axis
 
     def process(self, batch, request):
 
         if self.array not in batch:
             return
+        data = batch[self.array].data
+        shape = data.shape
+        print("primary: ", shape)
+        assert shape[self.axis] == 1, "Channel to delete must be size 1," \
+                                       "but given shape " + str(shape)
+        shape = tuple(dim for dim in shape if dim != self.axis)
+        batch[self.array].data = data.reshape(shape)
+        if self.axis > 0:
+            print(shape[-3:])
+            batch[self.array].spec.roi = gp.Roi(
+                    self.__insert_dim(
+                        self.__remove_dim(batch[self.array].spec.roi.get_begin(), 0),
+                        0),
+                    shape[-3:])
+        print("process: ", batch[self.array].data.shape)
+        print("roi: ", batch[self.array].spec.roi)
 
-        batch[self.array].data = batch[self.array].data[0]
+    def __remove_dim(self, a, dim=0):
+        return a[:dim] + a[dim + 1:]
 
+    def __insert_dim(self, a, s, dim=0):
+        return a[:dim] + (s,) + a[dim:]
 
 class AddRandomPoints(gp.BatchFilter):
 
@@ -267,9 +287,25 @@ class AddSpatialDim(gp.BatchFilter):
             self.__insert_dim(array.spec.roi.get_shape(), 1))
         array.spec.voxel_size = self.__insert_dim(array.spec.voxel_size, 1)
         array.data = array.data[:, :, np.newaxis, :, :]
+        print(array.data.shape)
 
     def __remove_dim(self, a, dim=0):
         return a[:dim] + a[dim + 1:]
 
     def __insert_dim(self, a, s, dim=0):
         return a[:dim] + (s,) + a[dim:]
+
+
+class AddChannelDim(gp.BatchFilter):
+
+    def __init__(self, array, axis=0):
+        self.array = array
+        self.axis = axis
+
+    def process(self, batch, request):
+
+        if self.array not in batch:
+            return
+        print(batch[self.array].data.shape)
+        print("add_roi: ", batch[self.array].spec.roi)
+        batch[self.array].data = np.expand_dims(batch[self.array].data, self.axis)

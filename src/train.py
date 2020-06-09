@@ -42,7 +42,6 @@ class trainer:
         self.model = model
         self.params = self.generate_param_grid(self.params)
 
-
     def train(self):
 
         parameters = pd.DataFrame(self.params)
@@ -95,9 +94,9 @@ class trainer:
         val_pipeline, val_request = pipeline.create_val_pipeline(val_model)
         # model = self.model.create_model(self.params, index, logger)
 
-        #with gp.build(training_pipeline):
-        #    for i in range(self.params[index]['num_iterations']):
-        #        batch = training_pipeline.request_batch(train_request) 
+        # with gp.build(training_pipeline):
+        #     for i in range(self.params[index]['num_iterations']):
+        #         batch = training_pipeline.request_batch(train_request) 
                 # print(batch)
         with gp.build(val_pipeline):
             for i in range(self.params[index]['num_iterations']):
@@ -136,7 +135,7 @@ class trainer:
 
 
     def map_pipeline(self, pipeline):
-        if pipeline is "standard_2d":
+        if pipeline == "standard_2d":
             return standard_2d
 
 
