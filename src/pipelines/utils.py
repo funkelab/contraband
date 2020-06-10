@@ -112,20 +112,46 @@ class RemoveChannelDim(gp.BatchFilter):
             return
         data = batch[self.array].data
         shape = data.shape
-        print("primary: ", shape)
+        roi = batch[self.array].spec.roi
+
+        assert self.axis < len(shape) - roi.dims(), "Axis given not is in ROI and not channel dim, " \
+                "Shape:" + str(shape) + " ROI: " + str(roi)
         assert shape[self.axis] == 1, "Channel to delete must be size 1," \
                                        "but given shape " + str(shape)
-        shape = tuple(dim for dim in shape if dim != self.axis)
+        shape = self.__remove_dim(shape, self.axis) 
         batch[self.array].data = data.reshape(shape)
-        if self.axis > 0:
-            print(shape[-3:])
-            batch[self.array].spec.roi = gp.Roi(
-                    self.__insert_dim(
-                        self.__remove_dim(batch[self.array].spec.roi.get_begin(), 0),
-                        0),
-                    shape[-3:])
-        print("process: ", batch[self.array].data.shape)
-        print("roi: ", batch[self.array].spec.roi)
+
+    def __remove_dim(self, a, dim=0):
+        return a[:dim] + a[dim + 1:]
+
+class RemoveSpatialDim(gp.BatchFilter):
+
+    def __init__(self, array, axis=0):
+        self.array = array
+        self.axis = axis
+
+    def setup(self):
+        self.updates(self.array, self.spec[self.array])
+
+    def process(self, batch, request):
+        if self.array not in batch:
+            return
+        data = batch[self.array].data
+        shape = data.shape
+        roi = batch[self.array].spec.roi
+        assert self.axis > len(shape) - roi.dims() -1 , "Axis given not in ROI, " \
+                "Shape:" + str(shape) + " ROI: " + str(roi)
+        assert shape[self.axis] == 1, "Channel to delete must be size 1," \
+                                       "but given shape " + str(shape)
+
+        shape = self.__remove_dim(shape, self.axis) 
+        batch[self.array].data = data.reshape(shape)
+        batch[self.array].spec.roi = gp.Roi(
+                self.__insert_dim(self.__remove_dim(roi.get_begin(), 0), 0),
+                shape[-roi.dims():])
+        print(batch[self.array].spec.roi)
+        print(shape)
+        print(batch)
 
     def __remove_dim(self, a, dim=0):
         return a[:dim] + a[dim + 1:]
@@ -306,6 +332,4 @@ class AddChannelDim(gp.BatchFilter):
 
         if self.array not in batch:
             return
-        print(batch[self.array].data.shape)
-        print("add_roi: ", batch[self.array].spec.roi)
         batch[self.array].data = np.expand_dims(batch[self.array].data, self.axis)

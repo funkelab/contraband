@@ -8,7 +8,7 @@ import math
 import numpy as np
 import torch
 import zarr
-from pipelines.utils import Blur, InspectBatch, RemoveChannelDim, AddRandomPoints, PrepareBatch, AddSpatialDim, SetDtype, AddChannelDim
+from pipelines.utils import Blur, InspectBatch, RemoveChannelDim, AddRandomPoints, PrepareBatch, AddSpatialDim, SetDtype, AddChannelDim, RemoveSpatialDim
 from skimage import data, io
 from matplotlib import pyplot as plt
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
@@ -239,7 +239,8 @@ class standard_2d():
             gp.Pad(raw, (0, 200, 200)) + 
             gp.Pad(gt_labels, (0, 300, 300)) + 
             gp.AddAffinities([[0, -1, 0], [0, 0, -1]],
-                             gt_labels, gt_aff))
+                             gt_labels, gt_aff) +
+            gp.Normalize(gt_aff))
         source = self._make_val_augmentation_pipeline(raw, source)
 
         pipeline = (
@@ -248,8 +249,8 @@ class standard_2d():
             gp.Crop(gt_labels, gt_roi) +
             #gp.Crop(gt_aff, gt_roi) +
             gp.RandomLocation() +
-            RemoveChannelDim(gt_aff, 1) +
             AddChannelDim(gt_aff) +
+            RemoveSpatialDim(gt_aff, 2) +
             AddChannelDim(raw) +
             gp.PreCache() +
             gp.torch.Train(
@@ -270,8 +271,8 @@ class standard_2d():
                 log_dir=self.logdir,
                 log_every=self.log_every
             ) + 
-            RemoveChannelDim(predictions, axis=2) + 
             AddSpatialDim(predictions) +
+            # RemoveChannelDim(predictions, axis=1) + 
             # now everything is 3D
             RemoveChannelDim(raw) +
             RemoveChannelDim(predictions) +
