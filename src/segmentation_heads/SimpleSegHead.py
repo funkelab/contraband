@@ -5,7 +5,7 @@ from src.utils import load_model
 
 class SimpleSegHead(torch.nn.Module):
 
-    def __init__(self, base_encoder, model_dir, h_channels, out_channels, params):
+    def __init__(self, base_encoder, h_channels, out_channels):
         super().__init__()
 
         self.name = "SimpleSegHead"

@@ -19,9 +19,12 @@ def load_model(model, prefix, checkpoint_file):
     """
     checkpoint = torch.load(checkpoint_file)
     loaded_dict = checkpoint['model_state_dict']
+    print(loaded_dict.keys())
     n_clip = len(prefix)
     adapted_dict = {k[n_clip:]: v for k, v in loaded_dict.items() 
                     if k.startswith(prefix)}
+    adapted_dict = {k: v for k, v in adapted_dict.items() 
+                    if not k.startswith("projection_head")}
     model.load_state_dict(adapted_dict)
     
     return model

@@ -12,6 +12,9 @@ from pipelines.Standard2DSeg import Standard2DSeg
 from models.Unet2D import Unet2D
 from segmentation_heads.SimpleSegHead import SimpleSegHead
 from torch.nn import MSELoss
+import waterz
+import numpy as np
+from models.ContrastiveVolumeNet import SegmentationVolumeNet, ContrastiveVolumeNet
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 from src import SL
@@ -99,13 +102,13 @@ class trainer:
         # return history.history
 
     def _contrastive_train_loop(self, params, pipeline):
-        model = self.model.create_model(params, mode=self.mode)
+        volume_net = ContrastiveVolumeNet(self.model, 20, 3)
 
         print("Model's state_dict:")
         for param_tensor in model.state_dict():
             print(param_tensor, "\t", model.state_dict()[param_tensor].size()) 
 
-        training_pipeline, train_request = pipeline.create_train_pipeline(model)
+        training_pipeline, train_request = pipeline.create_train_pipeline(volume_net)
         with gp.build(training_pipeline):
             for i in range(params['num_iterations']):
                 batch = training_pipeline.request_batch(train_request)
@@ -113,25 +116,23 @@ class trainer:
 
     def _seg_train_loop(self, params, pipeline, curr_log_dir):
         checkpoint = curr_log_dir + '/checkpoints/model_checkpoint_1'
-        model = self.model.create_model(params, mode=self.mode, checkpoint=checkpoint)
+        seg_head = params['seg_head'](self.model, 20, 2)
+        volume_net = SegmentationVolumeNet(self.model, seg_head)
+        volume_net.load(checkpoint)
 
         print("Model's state_dict:")
         for param_tensor in model.state_dict():
             print(param_tensor, "\t", model.state_dict()[param_tensor].size()) 
 
-        training_pipeline, train_request = pipeline.create_train_pipeline(model)
-        val_pipeline, val_request, gt_aff, predictions = pipeline.create_val_pipeline(model)
+        training_pipeline, train_request = pipeline.create_train_pipeline(volume_net)
+        val_pipeline, val_request, gt_aff, predictions = pipeline.create_val_pipeline(volume_net)
         with gp.build(training_pipeline), gp.build(val_pipeline):
-            loss = MSELoss()
             for i in range(params['num_iterations']):
                 batch = training_pipeline.request_batch(train_request)
                 print(batch)
                 if i % 2 == 0:
                     for i in range(5):
                         batch = val_pipeline.request_batch(val_request)
-                        print(torch.Tensor(batch[predictions].data))
-                        print(torch.Tensor(batch[gt_aff].data))
-                        print(loss(torch.Tensor(batch[predictions].data), torch.Tensor(batch[gt_aff].data)))
 
     def generate_param_grid(self, params):
         return [dict(zip(params.keys(), values)) for values in product(*params.values())]
