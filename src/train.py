@@ -133,6 +133,15 @@ class trainer:
                 if i % 2 == 0:
                     for i in range(5):
                         batch = val_pipeline.request_batch(val_request)
+                        predictions_3d = batch[predictions].data[:, :, np.newaxis, :, :]
+                        gt_aff_3d = batch[gt_aff].data[:, :, np.newaxis, :, :]
+                        print("raw: ", predictions_3d.dtype)  
+                        thresholds = [0, .5, .5]
+                        segmentations = list(waterz.agglomerate(predictions_3d[0], thresholds))[0]
+                        print(list(segmentations))
+                        gt_seg = list(waterz.agglomerate(gt_aff_3d[0], thresholds))[0]
+                        metrics = waterz.evaluate(segmentations, gt_seg)
+                        print("metrics", metrics)
 
     def generate_param_grid(self, params):
         return [dict(zip(params.keys(), values)) for values in product(*params.values())]
