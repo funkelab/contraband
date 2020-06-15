@@ -1,9 +1,8 @@
 import torch
-import numpy as np
 from funlib.learn.torch.models.conv4d import Conv4d
 
-class ContrastiveVolumeNet(torch.nn.Module):
 
+class BaseVolumeNet(torch.nn.Module):
     def __init__(self, base_encoder, h_channels, out_channels):
 
         super().__init__()
@@ -14,23 +13,16 @@ class ContrastiveVolumeNet(torch.nn.Module):
         self.out_channels = out_channels
         self.dims = base_encoder.dims
 
-        conv = {
-            2: torch.nn.Conv2d,
-            3: torch.nn.Conv3d,
-            4: Conv4d
-        }[self.dims]
 
-        self.projection_head = torch.nn.Sequential(
-            conv(self.in_channels, h_channels, (1,)*self.dims),
-            torch.nn.ReLU(),
-            conv(h_channels, out_channels, (1,)*self.dims)
-        )
-
-
-class TrainingContrastiveVolumeNet(ContrastiveVolumeNet):
-
+class ContrastiveVolumeNet(BaseVolumeNet):
     def __init__(self, base_encoder, h_channels, out_channels):
         super().__init__(base_encoder, h_channels, out_channels)
+
+        conv = {2: torch.nn.Conv2d, 3: torch.nn.Conv3d, 4: Conv4d}[self.dims]
+
+        self.projection_head = torch.nn.Sequential(
+            conv(self.in_channels, h_channels, (1, ) * self.dims),
+            torch.nn.ReLU(), conv(h_channels, out_channels, (1, ) * self.dims))
 
     def forward(self, raw_0, raw_1):
 
@@ -46,17 +38,18 @@ class TrainingContrastiveVolumeNet(ContrastiveVolumeNet):
         return h_0, h_1, z_0_norm, z_1_norm
 
 
-class InferencingContrastiveVolumeNet(ContrastiveVolumeNet):
-
-    def __init__(self, base_encoder, h_channels, out_channels):
+class SegmentationVolumeNet(BaseVolumeNet):
+    def __init__(self, base_encoder, model_dir, h_channels, out_channels,
+                 params):
         super().__init__(base_encoder, h_channels, out_channels)
+        self.seg_head = params['seg_head'](base_encoder, model_dir, h_channels,
+                                           out_channels, params)
 
     def forward(self, raw):
         h = self.base_encoder(raw)
-        z = self.projection_head(h)
+        z = self.seg_head(h)
 
         return z
-
 
 
 if __name__ == "__main__":
@@ -66,14 +59,8 @@ if __name__ == "__main__":
     emb_0 = torch.nn.functional.normalize(emb_0, 2)
     emb_1 = torch.nn.functional.normalize(emb_1, 2)
 
-    locations_0 = torch.Tensor([[
-        [0, 0, 0],
-        [1, 1, 1]
-    ]])
-    locations_1 = torch.Tensor([[
-        [2, 2, 2],
-        [3, 3, 3]
-    ]])
+    locations_0 = torch.Tensor([[[0, 0, 0], [1, 1, 1]]])
+    locations_1 = torch.Tensor([[[2, 2, 2], [3, 3, 3]]])
 
     loss = contrastive_volume_loss(emb_0, emb_1, locations_0, locations_1, 1.0)
 

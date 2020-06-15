@@ -1,10 +1,5 @@
-import funlib.learn.torch
 import gunpowder as gp
-import logging
-import math
 import numpy as np
-import torch
-import zarr
 from collections.abc import Iterable
 import skimage.filters as filters
 
@@ -96,6 +91,8 @@ class InspectBatch(gp.BatchFilter):
         self.prefix = prefix
 
     def process(self, batch, request):
+        for key, array in batch.arrays.items():
+            print(f"{self.prefix} ======== {key}: {array.data.shape}")
         for key, graph in batch.graphs.items():
             print(f"{self.prefix} ======== {key}: {graph}")
 
@@ -126,12 +123,36 @@ class RemoveChannelDim(gp.BatchFilter):
 
 class RemoveSpatialDim(gp.BatchFilter):
 
-    def __init__(self, array, axis=0):
+    def __init__(self, array):
         self.array = array
-        self.axis = axis
 
     def setup(self):
+
+        upstream_spec = self.get_upstream_provider().spec[self.array]
+
+        spec = upstream_spec.copy()
+        if spec.roi is not None:
+            spec.roi = gp.Roi(
+                self.__remove_dim(spec.roi.get_begin()),
+                self.__remove_dim(spec.roi.get_shape()))
+        if spec.voxel_size is not None:
+            spec.voxel_size = self.__remove_dim(spec.voxel_size)
+        self.spec[self.array] = spec
         self.updates(self.array, self.spec[self.array])
+
+    def prepare(self, request):
+
+        if self.array not in request:
+            return
+
+        upstream_spec = self.get_upstream_provider().spec[self.array]
+
+        request[self.array].roi = gp.Roi(
+            self.__insert_dim(request[self.array].roi.get_begin(), 0),
+            self.__insert_dim(request[self.array].roi.get_shape(), 1))
+        if request[self.array].voxel_size is not None:
+            request[self.array].voxel_size = self.__insert_dim(
+                request[self.array].voxel_size, 1)
 
     def process(self, batch, request):
         if self.array not in batch:
@@ -139,19 +160,16 @@ class RemoveSpatialDim(gp.BatchFilter):
         data = batch[self.array].data
         shape = data.shape
         roi = batch[self.array].spec.roi
-        assert self.axis > len(shape) - roi.dims() -1 , "Axis given not in ROI, " \
-                "Shape:" + str(shape) + " ROI: " + str(roi)
-        assert shape[self.axis] == 1, "Channel to delete must be size 1," \
+        assert shape[-roi.dims()] == 1, "Channel to delete must be size 1," \
                                        "but given shape " + str(shape)
 
-        shape = self.__remove_dim(shape, self.axis) 
+        shape = self.__remove_dim(shape, len(shape) - roi.dims()) 
         batch[self.array].data = data.reshape(shape)
         batch[self.array].spec.roi = gp.Roi(
-                self.__insert_dim(self.__remove_dim(roi.get_begin(), 0), 0),
-                shape[-roi.dims():])
-        print(batch[self.array].spec.roi)
-        print(shape)
-        print(batch)
+                self.__remove_dim(roi.get_begin()),
+                self.__remove_dim(roi.get_shape()))
+        batch[self.array].spec.voxel_size = \
+            self.__remove_dim(batch[self.array].spec.voxel_size)
 
     def __remove_dim(self, a, dim=0):
         return a[:dim] + a[dim + 1:]
@@ -286,6 +304,7 @@ class AddSpatialDim(gp.BatchFilter):
         if spec.voxel_size is not None:
             spec.voxel_size = self.__insert_dim(spec.voxel_size, 1)
         self.spec[self.array] = spec
+        self.updates(self.array, self.spec[self.array])
 
     def prepare(self, request):
 
@@ -313,7 +332,6 @@ class AddSpatialDim(gp.BatchFilter):
             self.__insert_dim(array.spec.roi.get_shape(), 1))
         array.spec.voxel_size = self.__insert_dim(array.spec.voxel_size, 1)
         array.data = array.data[:, :, np.newaxis, :, :]
-        print(array.data.shape)
 
     def __remove_dim(self, a, dim=0):
         return a[:dim] + a[dim + 1:]

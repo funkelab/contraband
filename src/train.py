@@ -1,29 +1,30 @@
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
-
-import matplotlib.pyplot as plt
 import logging
 from itertools import product
 import json
-from datetime import datetime
-import pandas as pd
-import numpy as np
 from shutil import copy
 import gunpowder as gp
-from pipelines.standard_2d import standard_2d
-from models.unet_2d import unet_2d
-from src import SL
 import torch
 import argparse
+from pipelines.Standard2DContrastive import Standard2DContrastive
+from pipelines.Standard2DSeg import Standard2DSeg
+from models.Unet2D import Unet2D
+from segmentation_heads.SimpleSegHead import SimpleSegHead
+from torch.nn import MSELoss
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
+from src import SL
+
 
 class trainer:
 
-    def __init__(self, model, expirement_name, expirement_num,
-                 date=datetime.now().strftime("%m-%d-%y")):
+    def __init__(self, model, expirement_num, mode):
 
-        self.logdir = "models" + SL + model.name + SL + "EXP" + str(expirement_num) + '-' \
-                      + expirement_name + '-' + date
+        expirement_dir = [filename for filename in os.listdir("models" + SL + model.name) \
+                          if filename.startswith('EXP' + str(expirement_num))][0]
+
+        self.logdir = "models" + SL + model.name + SL + expirement_dir 
 
         assert os.path.isdir(self.logdir), "Dir " + self.logdir + " doesn't exist"
 
@@ -32,7 +33,7 @@ class trainer:
         self.root_logger = self.create_logger(self.logdir, name='root')
         self.root_handler = self.root_logger.handlers[0]
 
-        self.root_logger.info("Starting expirement " + expirement_name + '-' + str(expirement_num) \
+        self.root_logger.info("Starting expirement " + str(expirement_dir.split('-')[:2]) \
                               + 'with model ' + model.name)
         self.root_logger.info("Parameter dict: " + str(self.params))
         self.root_logger.info("")
@@ -40,13 +41,21 @@ class trainer:
         copy("src/models/" + model.name + ".py", self.logdir)
 
         self.model = model
-        self.params = self.generate_param_grid(self.params)
+        print(self.params)
+        if mode == 'contrastive':
+            self.params = self.generate_param_grid(self.params['contrastive'])
+        elif mode == 'seg':
+            self.params = self.generate_param_grid(self.params['seg'])
+        else:
+            raise ValueError('Incorrect mode specified' + str(mode))
+        self.mode = mode
+
 
     def train(self):
 
-        parameters = pd.DataFrame(self.params)
-        parameters["val_accuracy"] = np.nan
-        parameters["val_loss"] = np.nan
+        # parameters = pd.DataFrame(self.params)
+        # parameters["val_accuracy"] = np.nan
+        # parameters["val_loss"] = np.nan
 
         for index in range(len(self.params)):
             curr_log_dir = self.logdir + SL + "combination-" + str(index)
@@ -80,28 +89,49 @@ class trainer:
 
         self.map_params(index)
 
-        training_model = self.model.create_model(self.params[index], training=True)
-        val_model = self.model.create_model(self.params[index], training=False)
+        pipeline = self.map_pipeline(self.model.pipeline)
+        pipeline = pipeline(self.params[index], curr_log_dir)
+
+        if mode == 'contrastive':
+            self._contrastive_train_loop(self.params[index], pipeline)
+        else:
+            self._seg_train_loop(self.params[index], pipeline, curr_log_dir)
+        # return history.history
+
+    def _contrastive_train_loop(self, params, pipeline):
+        model = self.model.create_model(params, mode=self.mode)
 
         print("Model's state_dict:")
-        for param_tensor in training_model.state_dict():
-            print(param_tensor, "\t", training_model.state_dict()[param_tensor].size()) 
+        for param_tensor in model.state_dict():
+            print(param_tensor, "\t", model.state_dict()[param_tensor].size()) 
 
-        pipeline = self.map_pipeline(self.model.pipeline)
+        training_pipeline, train_request = pipeline.create_train_pipeline(model)
+        with gp.build(training_pipeline):
+            for i in range(params['num_iterations']):
+                batch = training_pipeline.request_batch(train_request)
+                print(batch.loss)
 
-        pipeline = pipeline(self.params[index], curr_log_dir)
-        training_pipeline, train_request = pipeline.create_train_pipeline(training_model)
-        val_pipeline, val_request = pipeline.create_val_pipeline(val_model)
-        # model = self.model.create_model(self.params, index, logger)
+    def _seg_train_loop(self, params, pipeline, curr_log_dir):
+        checkpoint = curr_log_dir + '/checkpoints/model_checkpoint_1'
+        model = self.model.create_model(params, mode=self.mode, checkpoint=checkpoint)
 
-        # with gp.build(training_pipeline):
-        #     for i in range(self.params[index]['num_iterations']):
-        #         batch = training_pipeline.request_batch(train_request) 
-                # print(batch)
-        with gp.build(val_pipeline):
-            for i in range(self.params[index]['num_iterations']):
-                batch = val_pipeline.request_batch(val_request)
-        # return history.history
+        print("Model's state_dict:")
+        for param_tensor in model.state_dict():
+            print(param_tensor, "\t", model.state_dict()[param_tensor].size()) 
+
+        training_pipeline, train_request = pipeline.create_train_pipeline(model)
+        val_pipeline, val_request, gt_aff, predictions = pipeline.create_val_pipeline(model)
+        with gp.build(training_pipeline), gp.build(val_pipeline):
+            loss = MSELoss()
+            for i in range(params['num_iterations']):
+                batch = training_pipeline.request_batch(train_request)
+                print(batch)
+                if i % 2 == 0:
+                    for i in range(5):
+                        batch = val_pipeline.request_batch(val_request)
+                        print(torch.Tensor(batch[predictions].data))
+                        print(torch.Tensor(batch[gt_aff].data))
+                        print(loss(torch.Tensor(batch[predictions].data), torch.Tensor(batch[gt_aff].data)))
 
     def generate_param_grid(self, params):
         return [dict(zip(params.keys(), values)) for values in product(*params.values())]
@@ -133,39 +163,44 @@ class trainer:
             self.params[index]['optimizer'] = torch.optim.Adam
             self.params[index]['optimizer_kwargs'] = kwargs
 
+        if 'seg_head' in self.params[index]:
+            if self.params[index]['seg_head'] == 'SimpleSegHead':
+                self.params[index]['seg_head'] = SimpleSegHead
 
     def map_pipeline(self, pipeline):
-        if pipeline == "standard_2d":
-            return standard_2d
+        if pipeline == "Standard2D":
+            if mode == 'contrastive':
+                return Standard2DContrastive
+            else:
+                return Standard2DSeg
+        else:
+            raise ValueError('Incorrect pipeline: ' + pipeline)
 
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('-model')
-    parser.add_argument('-desc')
     parser.add_argument('-exp')
-    parser.add_argument('-date')
+    parser.add_argument('-mode')
     parser.add_argument('--fullpath')
     args = vars(parser.parse_args())
 
     if args['fullpath'] is not None:
         split = args['fullpath'].split('-')
         exp = split[0]
-        desc = split[1]
-        date = '-'.join(split[2:])
     else:
         exp = args['exp']
-        desc = args['desc']
-        date = args['date']
-    
+
     model = args['model']
-    if model == 'unet_2d':
-        model = unet_2d()
+    if model == 'Unet2D':
+        model = Unet2D()
     else:
         raise ValueError("invalid model name")
 
-    trainer(model, desc, exp, date).train()
+    mode = args['mode']
+
+    trainer(model, exp, mode).train()
 
 
 
