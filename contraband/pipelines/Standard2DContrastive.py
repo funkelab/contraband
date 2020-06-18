@@ -137,9 +137,9 @@ class Standard2DContrastive():
                     emb_0: gp.ArraySpec(voxel_size=(1, 1)),
                     emb_1: gp.ArraySpec(voxel_size=(1, 1))
                 },
-                checkpoint_basename=self.logdir + '/checkpoints/model',
+                checkpoint_basename=self.logdir + '/contrastive/checkpoints/model',
                 save_every=1,
-                log_dir=self.logdir,
+                log_dir=self.logdir + "/contrastive",
                 log_every=self.log_every) +
             # everything is 3D, except emb_0 and emb_1
             AddSpatialDim(emb_0) +
@@ -150,7 +150,7 @@ class Standard2DContrastive():
             RemoveChannelDim(emb_0) +
             RemoveChannelDim(emb_1) +
             gp.Snapshot(
-                output_dir=self.logdir + '/snapshots/train',
+                output_dir=self.logdir + '/snapshots/contrastive',
                 output_filename='it{iteration}.hdf',
                 dataset_names={
                     raw_0: 'raw_0',

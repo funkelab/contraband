@@ -1,47 +1,47 @@
-import sys
-import os
-import logging
+from contraband.post_processing.agglomerate import agglomerate
 from itertools import product
-import json
-from shutil import copy
-import gunpowder as gp
-import torch
-import argparse
+from models.ContrastiveVolumeNet import SegmentationVolumeNet, ContrastiveVolumeNet
+from models.Unet2D import Unet2D
 from pipelines.Standard2DContrastive import Standard2DContrastive
 from pipelines.Standard2DSeg import Standard2DSeg
-from models.Unet2D import Unet2D
 from segmentation_heads.SimpleSegHead import SimpleSegHead
-from torch.nn import MSELoss
-import waterz
+from shutil import copy
+import argparse
+import gunpowder as gp
+import json
+import logging
 import numpy as np
-from models.ContrastiveVolumeNet import SegmentationVolumeNet, ContrastiveVolumeNet
+import os
+import torch
+import waterz
+from  validate import validate
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
-from src import SL
 
-
-class trainer:
-
+class Trainer:
     def __init__(self, model, expirement_num, mode):
 
-        expirement_dir = [filename for filename in os.listdir("models" + SL + model.name) \
-                          if filename.startswith('EXP' + str(expirement_num))][0]
+        expirement_dir = [
+            filename
+            for filename in os.listdir(os.path.join("models", model.name))
+            if filename.startswith('EXP' + str(expirement_num))
+        ][0]
 
-        self.logdir = "models" + SL + model.name + SL + expirement_dir 
+        self.logdir = os.path.join("models", model.name, expirement_dir)
 
-        assert os.path.isdir(self.logdir), "Dir " + self.logdir + " doesn't exist"
+        assert os.path.isdir(
+            self.logdir), "Dir " + self.logdir + " doesn't exist"
 
         self.params = json.load(open(self.logdir + "/param_dict.json"))
 
         self.root_logger = self.create_logger(self.logdir, name='root')
         self.root_handler = self.root_logger.handlers[0]
 
-        self.root_logger.info("Starting expirement " + str(expirement_dir.split('-')[:2]) \
-                              + 'with model ' + model.name)
-        self.root_logger.info("Parameter dict: " + str(self.params))
+        self.root_logger.info("Starting experiment %s with model %s",
+                              expirement_dir.split('-')[:2], model.name)
+        self.root_logger.info("Parameter dict: %s", self.params)
         self.root_logger.info("")
 
-        copy("src/models/" + model.name + ".py", self.logdir)
+        copy("contraband/models/" + model.name + ".py", self.logdir)
 
         self.model = model
         print(self.params)
@@ -53,7 +53,6 @@ class trainer:
             raise ValueError('Incorrect mode specified' + str(mode))
         self.mode = mode
 
-
     def train(self):
 
         # parameters = pd.DataFrame(self.params)
@@ -61,11 +60,20 @@ class trainer:
         # parameters["val_loss"] = np.nan
 
         for index in range(len(self.params)):
-            curr_log_dir = self.logdir + SL + "combination-" + str(index)
+            curr_log_dir = os.path.join(self.logdir,
+                                        "combination-" + str(index))
             os.makedirs(curr_log_dir, exist_ok=True)
-            assert os.path.isdir(curr_log_dir), "Dir " + curr_log_dir + "doesn't exist"
-            os.makedirs(curr_log_dir + '/checkpoints', exist_ok=True)
-            assert os.path.isdir(curr_log_dir + '/checkpoints'), "Dir " + curr_log_dir + "doesn't exist"
+            assert os.path.isdir(curr_log_dir), \
+                os.path.join("Dir ", curr_log_dir, "doesn't exist")
+
+            os.makedirs(curr_log_dir + '/contrastive/checkpoints',
+                        exist_ok=True)
+            os.makedirs(curr_log_dir + '/seg/checkpoints', exist_ok=True)
+
+            assert os.path.isdir(curr_log_dir + '/contrastive/checkpoints'), \
+                "Dir " + curr_log_dir + "doesn't exist"
+            assert os.path.isdir(curr_log_dir + '/seg/checkpoints'), \
+                "Dir " + curr_log_dir + "doesn't exist"
 
             logger = self.create_logger(curr_log_dir, index=index)
             logger.addHandler(self.root_handler)
@@ -81,13 +89,13 @@ class trainer:
             # parameters.iloc[index].to_json(curr_log_dir + '/params.json')
 
             # logger.info("Val loss: " + str(history['val_loss'][0]))
-            #logger.info("Val accuracy: " + str(history['val_accuracy'][0]))
+            # logger.info("Val accuracy: " + str(history['val_accuracy'][0]))
 
         # parameters.to_csv(self.logdir + "/hyperparameter_matrix.csv")
 
     def train_one(self, index, logger):
 
-        curr_log_dir = self.logdir + SL + "combination-" + str(index)
+        curr_log_dir = os.path.join(self.logdir, "combination-" + str(index))
         logger.info("Current log dir: " + curr_log_dir)
 
         self.map_params(index)
@@ -106,45 +114,42 @@ class trainer:
 
         print("Model's state_dict:")
         for param_tensor in model.state_dict():
-            print(param_tensor, "\t", model.state_dict()[param_tensor].size()) 
+            print(param_tensor, "\t", model.state_dict()[param_tensor].size())
 
-        training_pipeline, train_request = pipeline.create_train_pipeline(volume_net)
+        training_pipeline, train_request = pipeline.create_train_pipeline(
+            volume_net)
         with gp.build(training_pipeline):
             for i in range(params['num_iterations']):
                 batch = training_pipeline.request_batch(train_request)
                 print(batch.loss)
 
     def _seg_train_loop(self, params, pipeline, curr_log_dir):
-        checkpoint = curr_log_dir + '/checkpoints/model_checkpoint_1'
+        checkpoint = curr_log_dir + '/contrastive/checkpoints/model_checkpoint_1'
         seg_head = params['seg_head'](self.model, 20, 2)
         volume_net = SegmentationVolumeNet(self.model, seg_head)
         volume_net.load(checkpoint)
 
         print("Model's state_dict:")
         for param_tensor in model.state_dict():
-            print(param_tensor, "\t", model.state_dict()[param_tensor].size()) 
+            print(param_tensor, "\t", model.state_dict()[param_tensor].size())
 
-        training_pipeline, train_request = pipeline.create_train_pipeline(volume_net)
-        val_pipeline, val_request, gt_aff, predictions = pipeline.create_val_pipeline(volume_net)
-        with gp.build(training_pipeline), gp.build(val_pipeline):
+        training_pipeline, train_request = pipeline.create_train_pipeline(
+            volume_net)
+
+        with gp.build(training_pipeline):
             for i in range(params['num_iterations']):
-                batch = training_pipeline.request_batch(train_request)
-                print(batch)
-                if i % 2 == 0:
-                    for i in range(5):
-                        batch = val_pipeline.request_batch(val_request)
-                        predictions_3d = batch[predictions].data[:, :, np.newaxis, :, :]
-                        gt_aff_3d = batch[gt_aff].data[:, :, np.newaxis, :, :]
-                        print("raw: ", predictions_3d.dtype)  
-                        thresholds = [0, .5, .5]
-                        segmentations = list(waterz.agglomerate(predictions_3d[0], thresholds))[0]
-                        print(list(segmentations))
-                        gt_seg = list(waterz.agglomerate(gt_aff_3d[0], thresholds))[0]
-                        metrics = waterz.evaluate(segmentations, gt_seg)
-                        print("metrics", metrics)
+                # batch = training_pipeline.request_batch(train_request)
+                # print(batch)
+                if i % 1 == 0:
+                    validate(volume_net, pipeline, 
+                             params['data'][0], curr_log_dir,
+                             params['thresholds'])
 
     def generate_param_grid(self, params):
-        return [dict(zip(params.keys(), values)) for values in product(*params.values())]
+        return [
+            dict(zip(params.keys(), values))
+            for values in product(*params.values())
+        ]
 
     def create_logger(self, log_dir, name=None, index=None):
         if name is None:
@@ -154,7 +159,8 @@ class trainer:
         logger = logging.getLogger(name)
         logger.setLevel(logging.INFO)
         file_handler = logging.FileHandler(log_dir + '/' + name + ".log")
-        formatter = logging.Formatter('%(asctime)s : %(levelname)s : %(name)s : %(message)s')
+        formatter = logging.Formatter(
+            '%(asctime)s : %(levelname)s : %(name)s : %(message)s')
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
         return logger
@@ -210,7 +216,4 @@ if __name__ == '__main__':
 
     mode = args['mode']
 
-    trainer(model, exp, mode).train()
-
-
-
+    Trainer(model, exp, mode).train()
