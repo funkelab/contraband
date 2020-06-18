@@ -1,7 +1,7 @@
 import torch
 import funlib
 from models.ContrastiveVolumeNet import SegmentationVolumeNet, ContrastiveVolumeNet
-from src.utils import load_model
+from contraband.utils import load_model
 
 
 class Unet2D(torch.nn.Module):

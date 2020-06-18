@@ -1,6 +1,6 @@
 import torch
 from funlib.learn.torch.models.conv4d import Conv4d
-from src.utils import load_model
+from contraband.utils import load_model
 
 
 class ContrastiveVolumeNet(torch.nn.Module):
