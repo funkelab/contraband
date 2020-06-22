@@ -62,7 +62,8 @@ class Standard2DContrastive():
         optimizer = self.params['optimizer'](model.parameters(), 
                                                    **self.params['optimizer_kwargs'])
 
-        filename = 'data/ctc/Fluo-N2DH-SIM+.zarr'
+        filename = self.params['data_file']
+        dataset = self.params['dataset']
 
         raw_0 = gp.ArrayKey('RAW_0')
         points_0 = gp.GraphKey('POINTS_0')
@@ -85,14 +86,14 @@ class Standard2DContrastive():
         snapshot_request[emb_0] = gp.ArraySpec(roi=request[points_0].roi)
         snapshot_request[emb_1] = gp.ArraySpec(roi=request[points_1].roi)
 
-        source_shape = zarr.open(filename)['train/raw'].shape
+        source_shape = zarr.open(filename)[dataset].shape
         raw_roi = gp.Roi((0, 0, 0), source_shape)
 
         sources = tuple(
             gp.ZarrSource(
                 filename,
                 {
-                    raw: 'train/raw'
+                    raw: dataset 
                 },
                 # fake 3D data
                 array_specs={

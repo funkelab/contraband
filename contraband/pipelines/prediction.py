@@ -8,7 +8,8 @@ import numpy as np
 
 class Predict():
 
-    def __init__(self, model, dataset, curr_log_dir):
+    def __init__(self, model, data_file, dataset, curr_log_dir):
+        self.data_file = data_file
         self.dataset = dataset
         self.model = model
         self.curr_log_dir = curr_log_dir
@@ -37,7 +38,7 @@ class Predict():
         request.add(raw, input_size)
         request.add(pred_affs, output_size)
 
-        source_shape = zarr.open(self.dataset)['validate/raw'].shape
+        source_shape = zarr.open(self.data_file)[self.dataset].shape
         raw_roi = gp.Roi((0, 0), source_shape[1:])
         print(raw_roi)
 
@@ -45,9 +46,9 @@ class Predict():
 
         source = (
             gp.ZarrSource(
-                self.dataset,
+                self.data_file,
                 {
-                    raw: 'validate/raw',
+                    raw: self.dataset,
                 },
                 array_specs={
                     raw: gp.ArraySpec(

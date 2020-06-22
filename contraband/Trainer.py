@@ -138,8 +138,8 @@ class Trainer:
                 batch = training_pipeline.request_batch(train_request)
                 print(batch)
                 if i % 1 == 0:
-                    validate(volume_net, pipeline, 
-                             params['data'][0], curr_log_dir,
+                    validate(volume_net, params['data_file'], 
+                             params['dataset']['validate'], curr_log_dir,
                              params['thresholds'])
 
     def generate_param_grid(self, params):

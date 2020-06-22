@@ -25,7 +25,9 @@ class Standard2DSeg():
 
        	print(f"Creating training pipeline with batch size {self.params['batch_size']}")
         
-        datasets = self.params['data'][0]
+        data_file = self.params['data_file']
+        raw_dataset = self.params['dataset']['train']['raw']
+        gt_dataset = self.params['dataset']['train']['gt']
     
         optimizer = self.params['optimizer'](model.parameters(), 
                                              **self.params['optimizer_kwargs'])
@@ -40,18 +42,18 @@ class Standard2DSeg():
         request.add(gt_aff, (168, 168))
         request.add(predictions, (168, 168))
         
-        source_shape = zarr.open(datasets)['train/raw'].shape
-        gt_source_shape = zarr.open(datasets)['train/gt'].shape
+        source_shape = zarr.open(data_file)[raw_dataset].shape
+        gt_source_shape = zarr.open(data_file)[gt_dataset].shape
         # plt.show()
         raw_roi = gp.Roi((0, 0, 0), source_shape)
         gt_roi = gp.Roi((0, 0, 0), gt_source_shape) 
 
         source = (
             gp.ZarrSource(
-                datasets,
+                data_file,
                 {
-                    raw: 'train/raw',
-                    gt_labels: 'train/gt'
+                    raw: raw_dataset,
+                    gt_labels: gt_dataset 
                 },
                 # fake 3D data
                 array_specs={
