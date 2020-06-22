@@ -1,12 +1,12 @@
-import sys
-import os
 import math
 import gunpowder as gp
 import logging
 import numpy as np
 import torch
 import zarr
-from pipelines.utils import Blur, InspectBatch, RemoveChannelDim, AddRandomPoints, PrepareBatch, AddSpatialDim, SetDtype, AddChannelDim, RemoveSpatialDim
+from contraband.pipelines.utils import Blur, InspectBatch, RemoveChannelDim, \
+    AddRandomPoints, PrepareBatch, AddSpatialDim, \
+    SetDtype, AddChannelDim, RemoveSpatialDim
 
 logging.basicConfig(level=logging.INFO)
 
@@ -28,7 +28,7 @@ class Standard2DSeg():
         datasets = self.params['data'][0]
     
         optimizer = self.params['optimizer'](model.parameters(), 
-                                                   **self.params['optimizer_kwargs'])
+                                             **self.params['optimizer_kwargs'])
 
         raw = gp.ArrayKey('RAW')
         gt_labels = gp.ArrayKey('LABELS')
@@ -64,9 +64,10 @@ class Standard2DSeg():
                         voxel_size=(1, 1, 1),
                         interpolatable=True,
                         dtype=np.uint32)
-                    }) +
+                }
+            ) +
             # SetDtype(gt_aff, np.uint8) +
-            gp.Normalize(raw, factor=1.0/4) +
+            gp.Normalize(raw, factor=1.0 / 4) +
             gp.Pad(raw, (0, 200, 200)) + 
             gp.Pad(gt_labels, (0, 300, 300)) +
             gp.RandomLocation()
@@ -141,7 +142,7 @@ class Standard2DSeg():
             source = source + gp.ElasticAugment(
                 control_point_spacing=(1, 10, 10),
                 jitter_sigma=(0, 0.1, 0.1),
-                rotation_interval=(0, math.pi/2))
+                rotation_interval=(0, math.pi / 2))
 
         if 'blur' in self.params and self.params['blur']:
             source = source + Blur(raw, sigma=[0, 1, 1])

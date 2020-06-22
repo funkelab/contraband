@@ -24,20 +24,23 @@ class SetDtype(gp.BatchFilter):
         # array.data = array.data.astype(self.dtype)
         array.spec.dtype = self.dtype
 
+
 class Blur(gp.BatchFilter):
-    '''Add random noise to an array. Uses the scikit-image function skimage.filters.gaussian
+    '''Add random noise to an array. Uses the scikit-image function
+    skimage.filters.gaussian
     See scikit-image documentation for more information.
 
     Args:
 
         array (:class:`ArrayKey`):
 
-            The array to blur. 
+            The array to blur.
 
         sigma (``scalar or list``):
 
-            The st. dev to use for the gaussian filter. If scalar it will be projected to match the
-            number of ROI dims. If give an list or numpy array, it must match the number of ROI dims.
+            The st. dev to use for the gaussian filter. If scalar it will be 
+            projected to match the number of ROI dims. If give an list or numpy
+            array, it must match the number of ROI dims.
 
     '''
 
@@ -55,17 +58,20 @@ class Blur(gp.BatchFilter):
         spec = request[self.array].copy()
         
         if isinstance(self.sigma, Iterable):
-            assert spec.roi.dims() == len(self.sigma), ("Dimensions given for sigma (" 
+            assert spec.roi.dims() == len(self.sigma), \
+                   ("Dimensions given for sigma (" 
                    + str(len(self.sigma)) + ") is not equal to the ROI dims (" 
                    + str(spec.roi.dims()) + ")")
         else:
-            self.filter_radius = [self.filter_radius for dim in range(spec.roi.dims())]
+            self.filter_radius = [self.filter_radius 
+                                  for dim in range(spec.roi.dims())]
 
-        self.grow_amount = gp.Coordinate([radius for radius in self.filter_radius])
+        self.grow_amount = gp.Coordinate([radius
+                                          for radius in self.filter_radius])
 
         grown_roi = spec.roi.grow(
-                self.grow_amount,
-                self.grow_amount)
+            self.grow_amount,
+            self.grow_amount)
         grown_roi.snap_to_grid(self.spec[self.array].voxel_size)
 
         spec.roi = grown_roi
@@ -79,11 +85,14 @@ class Blur(gp.BatchFilter):
         
         if not isinstance(self.sigma, Iterable):
             self.sigma = [0 for dim in range(len(raw.data.shape) - roi.dims())] \
-                         + [self.sigma for dim in range(roi.dims())]
+                + [self.sigma for dim in range(roi.dims())]
 
-        raw.data = filters.gaussian(raw.data, sigma=self.sigma, mode='constant', preserve_range=True, multichannel=False)
+        raw.data = filters.gaussian(raw.data, sigma=self.sigma,
+                                    mode='constant', preserve_range=True,
+                                    multichannel=False)
         
         batch[self.array].crop(request[self.array].roi)
+
 
 class InspectBatch(gp.BatchFilter):
 

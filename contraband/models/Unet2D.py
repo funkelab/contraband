@@ -1,6 +1,8 @@
 import torch
 import funlib
-from models.ContrastiveVolumeNet import SegmentationVolumeNet, ContrastiveVolumeNet
+from contraband.models.ContrastiveVolumeNet import (
+    SegmentationVolumeNet,
+    ContrastiveVolumeNet)
 from contraband.utils import load_model
 
 

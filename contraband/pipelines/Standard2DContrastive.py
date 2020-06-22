@@ -1,14 +1,19 @@
-import sys
-import os
-
 import gunpowder as gp
 import logging
 import math
 import torch
 import zarr
-from pipelines.utils import Blur, InspectBatch, RemoveChannelDim, AddRandomPoints, PrepareBatch, AddSpatialDim, SetDtype, AddChannelDim, RemoveSpatialDim
-sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
-from pipelines.contrastive_loss import contrastive_volume_loss
+from contraband.pipelines.utils import (
+    Blur, 
+    InspectBatch,
+    RemoveChannelDim,
+    AddRandomPoints,
+    PrepareBatch,
+    AddSpatialDim,
+    SetDtype,
+    AddChannelDim,
+    RemoveSpatialDim)
+from contraband.pipelines.contrastive_loss import contrastive_volume_loss
 
 logging.basicConfig(level=logging.INFO)
 
@@ -38,7 +43,7 @@ class Standard2DContrastive():
             source = source + gp.ElasticAugment(
                 control_point_spacing=(1, 10, 10),
                 jitter_sigma=(0, 0.1, 0.1),
-                rotation_interval=(0, math.pi/2))
+                rotation_interval=(0, math.pi / 2))
 
         if 'blur' in self.params and self.params['blur']:
             source = source + Blur(raw, sigma=[0, 1, 1])

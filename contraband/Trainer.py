@@ -1,20 +1,17 @@
 from contraband.post_processing.agglomerate import agglomerate
 from itertools import product
-from models.ContrastiveVolumeNet import SegmentationVolumeNet, ContrastiveVolumeNet
-from models.Unet2D import Unet2D
-from pipelines.Standard2DContrastive import Standard2DContrastive
-from pipelines.Standard2DSeg import Standard2DSeg
-from segmentation_heads.SimpleSegHead import SimpleSegHead
+from contraband.models.ContrastiveVolumeNet import SegmentationVolumeNet, ContrastiveVolumeNet
+from contraband.models.Unet2D import Unet2D
+from contraband.pipelines.Standard2DContrastive import Standard2DContrastive
+from contraband.pipelines.Standard2DSeg import Standard2DSeg
+from contraband.segmentation_heads.SimpleSegHead import SimpleSegHead
 from shutil import copy
-import argparse
 import gunpowder as gp
 import json
 import logging
-import numpy as np
 import os
 import torch
-import waterz
-from  validate import validate
+from contraband.validate import validate
 
 
 class Trainer:
@@ -103,7 +100,7 @@ class Trainer:
         pipeline = self.map_pipeline(self.model.pipeline)
         pipeline = pipeline(self.params[index], curr_log_dir)
 
-        if mode == 'contrastive':
+        if self.mode == 'contrastive':
             self._contrastive_train_loop(self.params[index], pipeline)
         else:
             self._seg_train_loop(self.params[index], pipeline, curr_log_dir)
@@ -113,8 +110,8 @@ class Trainer:
         volume_net = ContrastiveVolumeNet(self.model, 20, 3)
 
         print("Model's state_dict:")
-        for param_tensor in model.state_dict():
-            print(param_tensor, "\t", model.state_dict()[param_tensor].size())
+        for param_tensor in volume_net.state_dict():
+            print(param_tensor, "\t", volume_net.state_dict()[param_tensor].size())
 
         training_pipeline, train_request = pipeline.create_train_pipeline(
             volume_net)
@@ -130,16 +127,16 @@ class Trainer:
         volume_net.load(checkpoint)
 
         print("Model's state_dict:")
-        for param_tensor in model.state_dict():
-            print(param_tensor, "\t", model.state_dict()[param_tensor].size())
+        for param_tensor in volume_net.state_dict():
+            print(param_tensor, "\t", volume_net.state_dict()[param_tensor].size())
 
         training_pipeline, train_request = pipeline.create_train_pipeline(
             volume_net)
 
         with gp.build(training_pipeline):
             for i in range(params['num_iterations']):
-                # batch = training_pipeline.request_batch(train_request)
-                # print(batch)
+                batch = training_pipeline.request_batch(train_request)
+                print(batch)
                 if i % 1 == 0:
                     validate(volume_net, pipeline, 
                              params['data'][0], curr_log_dir,
@@ -185,7 +182,7 @@ class Trainer:
 
     def map_pipeline(self, pipeline):
         if pipeline == "Standard2D":
-            if mode == 'contrastive':
+            if self.mode == 'contrastive':
                 return Standard2DContrastive
             else:
                 return Standard2DSeg
@@ -193,27 +190,3 @@ class Trainer:
             raise ValueError('Incorrect pipeline: ' + pipeline)
 
 
-if __name__ == '__main__':
-
-    parser = argparse.ArgumentParser(description='Process some integers.')
-    parser.add_argument('-model')
-    parser.add_argument('-exp')
-    parser.add_argument('-mode')
-    parser.add_argument('--fullpath')
-    args = vars(parser.parse_args())
-
-    if args['fullpath'] is not None:
-        split = args['fullpath'].split('-')
-        exp = split[0]
-    else:
-        exp = args['exp']
-
-    model = args['model']
-    if model == 'Unet2D':
-        model = Unet2D()
-    else:
-        raise ValueError("invalid model name")
-
-    mode = args['mode']
-
-    Trainer(model, exp, mode).train()

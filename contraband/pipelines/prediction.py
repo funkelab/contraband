@@ -19,7 +19,7 @@ class Predict():
 
         with gp.build(pipeline):
             pipeline.request_batch(gp.BatchRequest())
-            with h5py.File(os.path.join(self.curr_log_dir, 
+            with h5py.File(os.path.join(self.curr_log_dir,
                                         'seg/predictions.hdf'), 'r') as f:
 
                 print("datasets: ", list(f.keys()))
@@ -34,8 +34,8 @@ class Predict():
         output_size = gp.Coordinate((168, 168))
 
         request = gp.BatchRequest()
-        request.add(raw, input_size) 
-        request.add(pred_affs, output_size) 
+        request.add(raw, input_size)
+        request.add(pred_affs, output_size)
 
         source_shape = zarr.open(self.dataset)['validate/raw'].shape
         raw_roi = gp.Roi((0, 0), source_shape[1:])
