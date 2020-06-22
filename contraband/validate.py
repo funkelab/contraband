@@ -31,6 +31,7 @@ def validate(model, data_file, dataset, curr_log_dir, thresholds):
     
     pred_aff = predict.get_predictions()
     labels = np.array(zarr.open(data_file, 'r')[dataset['gt']]).astype(np.uint64)
+    print("unique: ", np.unique(labels))
 
     for i in range(pred_aff.shape[0]):
         curr_segmentation = agglomerate(pred_aff[i],
@@ -55,8 +56,8 @@ def validate(model, data_file, dataset, curr_log_dir, thresholds):
     sample = zarr.open_group(os.path.join(curr_log_dir, 'seg/sample.zarr'))
     # sample.create_group('sample')
     seg = sample.create_dataset('segmentation', shape=curr_segmentation.shape,
-                                chunks=(100, 100), dtype='i4')
-    seg.data = curr_segmentation
-    gt = sample.create_dataset('gt', shape=labels[0].shape, chunks=(100, 100), dtype='i4')
-    gt.data = labels[0]
+                                chunks=(100, 100), dtype='u8')
+    seg[:, :] = curr_segmentation
+    gt = sample.create_dataset('gt', shape=labels[0].shape, chunks=(100, 100), dtype='u8')
+    gt[:, :] = labels[0]
 
