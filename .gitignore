@@ -1,9 +1,11 @@
 snapshots
 *.sw[pmno]
-model_checkpoint*
 data
 snapshots/
 checkpoints/
+combination*
+*.egg-info
+*.log
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
