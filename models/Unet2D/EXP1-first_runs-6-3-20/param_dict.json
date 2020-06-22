@@ -1,0 +1,34 @@
+{
+  "contrastive": {
+      "data_file": ["data/ctc/Fluo-N2DH-SIM+.zarr"],
+      "dataset": ["train/raw"],
+      "batch_size": [4],
+      "optimizer": ["adam"],
+      "lr": [1e-5],
+      "epochs": [3],
+      "num_iterations": [9],
+      "elastic": [true],
+      "blur": [true],
+      "simple": [false],
+      "noise": [false]
+  },
+  "seg": {
+      "data_file": ["data/ctc/Fluo-N2DH-SIM+.zarr"],
+      "dataset": [{
+	      "train": {"raw": "train/raw", "gt": "train/gt"},
+	      "validate": {"raw": "validate/raw", "gt": "validate/gt"}
+      	}
+      ],
+      "batch_size": [4],
+      "optimizer": ["adam"],
+      "lr": [1e-5],
+      "epochs": [3],
+      "num_iterations": [1],
+      "elastic": [true],
+      "blur": [true],
+      "simple": [false],
+      "noise": [false],
+      "seg_head": ["SimpleSegHead"],
+      "thresholds": [[0.5]]
+  }
+}
