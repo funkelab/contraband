@@ -1,17 +1,12 @@
 from contraband.post_processing.agglomerate import agglomerate
-from itertools import product
 from contraband.models.ContrastiveVolumeNet import SegmentationVolumeNet, ContrastiveVolumeNet
-from contraband.models.Unet2D import Unet2D
-from contraband.pipelines.Standard2DContrastive import Standard2DContrastive
-from contraband.pipelines.Standard2DSeg import Standard2DSeg
-from contraband.segmentation_heads.SimpleSegHead import SimpleSegHead
 from shutil import copy
 import gunpowder as gp
 import json
-import logging
 import os
-import torch
 from contraband.validate import validate
+import contraband.param_mapping as mapping
+import contraband.utils as utils
 
 
 class Trainer:
@@ -30,7 +25,7 @@ class Trainer:
 
         self.params = json.load(open(self.logdir + "/param_dict.json"))
 
-        self.root_logger = self.create_logger(self.logdir, name='root')
+        self.root_logger = utils.create_logger(self.logdir, name='root')
         self.root_handler = self.root_logger.handlers[0]
 
         self.root_logger.info("Starting experiment %s with model %s",
@@ -43,9 +38,9 @@ class Trainer:
         self.model = model
         print(self.params)
         if mode == 'contrastive':
-            self.params = self.generate_param_grid(self.params['contrastive'])
+            self.params = mapping.generate_param_grid(self.params['contrastive'])
         elif mode == 'seg':
-            self.params = self.generate_param_grid(self.params['seg'])
+            self.params = mapping.generate_param_grid(self.params['seg'])
         else:
             raise ValueError('Incorrect mode specified' + str(mode))
         self.mode = mode
@@ -72,7 +67,7 @@ class Trainer:
             assert os.path.isdir(curr_log_dir + '/seg/checkpoints'), \
                 "Dir " + curr_log_dir + "doesn't exist"
 
-            logger = self.create_logger(curr_log_dir, index=index)
+            logger = utils.create_logger(curr_log_dir, index=index)
             logger.addHandler(self.root_handler)
 
             logger.info('Training with parameter combination ' + str(index))
@@ -95,9 +90,9 @@ class Trainer:
         curr_log_dir = os.path.join(self.logdir, "combination-" + str(index))
         logger.info("Current log dir: " + curr_log_dir)
 
-        self.map_params(index)
+        mapping.map_params(self.params[index])
 
-        pipeline = self.map_pipeline(self.model.pipeline)
+        pipeline = mapping.map_pipeline(self.mode, self.model.pipeline)
         pipeline = pipeline(self.params[index], curr_log_dir)
 
         if self.mode == 'contrastive':
@@ -142,51 +137,6 @@ class Trainer:
                              params['dataset']['validate'], curr_log_dir,
                              params['thresholds'])
 
-    def generate_param_grid(self, params):
-        return [
-            dict(zip(params.keys(), values))
-            for values in product(*params.values())
-        ]
 
-    def create_logger(self, log_dir, name=None, index=None):
-        if name is None:
-            assert index is not None, "Must specify index in create logger"
-            name = 'combination-' + str(index)
-
-        logger = logging.getLogger(name)
-        logger.setLevel(logging.INFO)
-        file_handler = logging.FileHandler(log_dir + '/' + name + ".log")
-        formatter = logging.Formatter(
-            '%(asctime)s : %(levelname)s : %(name)s : %(message)s')
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-        return logger
-
-    def map_params(self, index):
-        if self.params[index]['optimizer'] == 'adam':
-            kwargs = {}
-            if 'lr' in self.params[index]:
-                kwargs['lr'] = self.params[index]['lr']
-            if 'clipvalue' in self.params[index]:
-                kwargs['clipvalue'] = self.params[index]['clipvalue']
-            elif 'clipnorm' in self.params[index]:
-                kwargs['clipnorm'] = self.params[index]['clipnorm']
-            if 'decay' in self.params[index]:
-                kwargs['decay'] = self.params[index]['decay']
-            self.params[index]['optimizer'] = torch.optim.Adam
-            self.params[index]['optimizer_kwargs'] = kwargs
-
-        if 'seg_head' in self.params[index]:
-            if self.params[index]['seg_head'] == 'SimpleSegHead':
-                self.params[index]['seg_head'] = SimpleSegHead
-
-    def map_pipeline(self, pipeline):
-        if pipeline == "Standard2D":
-            if self.mode == 'contrastive':
-                return Standard2DContrastive
-            else:
-                return Standard2DSeg
-        else:
-            raise ValueError('Incorrect pipeline: ' + pipeline)
 
 
