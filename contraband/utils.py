@@ -64,12 +64,10 @@ def get_checkpoints(path, match=None):
     return checkpionts
 
 
-def get_history(path, num_iterations):
+def get_history(path):
     if os.path.isfile(path):
         history = np.load(path)
         start_idx = history.shape[0]
-        return np.concatenate(
-            [history, np.zeros(num_iterations - start_idx)]), \
-            start_idx
+        return history.tolist(), start_idx
     else:
-        return np.zeros(num_iterations), 0
+        return [], 0

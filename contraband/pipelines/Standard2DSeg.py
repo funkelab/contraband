@@ -116,7 +116,7 @@ class Standard2DSeg():
                     predictions: gp.ArraySpec(voxel_size=(1, 1)),
                 },
                 checkpoint_basename=self.logdir + '/checkpoints/model',
-                save_every=1,
+                save_every=self.params['save_every'],
                 log_dir=self.logdir,
                 log_every=self.log_every
             ) + 
@@ -133,7 +133,7 @@ class Standard2DSeg():
                     predictions: 'predictions',
                     gt_labels: 'gt_labels'
                 },
-                every=500) +
+                every=self.params['save_every']) +
             gp.PrintProfilingStats(every=10)
         )
 

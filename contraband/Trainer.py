@@ -121,13 +121,17 @@ class Trainer:
             volume_net)
 
         history_path = os.path.join(curr_log_dir, "contrastive/history.npy")
-        loss, start_idx = utils.get_history(history_path, params['num_iterations'])
+        loss, start_idx = utils.get_history(history_path)
         with gp.build(training_pipeline):
+            curr_loss = [] 
             for i in range(start_idx, params['num_iterations']):
                 batch = training_pipeline.request_batch(train_request)
-                loss[i] = batch.loss
+                curr_loss.append(batch.loss)
+                if len(curr_loss) % params['save_every'] == 0:   
+                    loss = loss + curr_loss
+                    np.save(history_path, loss, allow_pickle=True)
+                    curr_loss = []
 
-        np.save(history_path, loss, allow_pickle=True)
 
 
     def _seg_train_loop(self, params, pipeline, curr_log_dir):
@@ -153,12 +157,17 @@ class Trainer:
                 volume_net)
 
             history_path = os.path.join(checkpoint_log_dir, "history.npy")
-            loss, start_idx = utils.get_history(history_path, params['num_iterations'])
+            loss, start_idx = utils.get_history(history_path)
             with gp.build(training_pipeline):
+                curr_loss = [] 
                 for i in range(start_idx, params['num_iterations']):
                     batch = training_pipeline.request_batch(train_request)
-                    loss[i] = batch.loss
-            np.save(history_path, loss, allow_pickle=True)
+                    curr_loss.append(batch.loss)
+                    if len(curr_loss) % params['save_every'] == 0:   
+                        loss = loss + curr_loss
+                        np.save(history_path, loss, allow_pickle=True)
+                        curr_loss = []
+
 
     def _validate(self, params, curr_log_dir):
 
