@@ -8,6 +8,7 @@ from contraband.validate import validate
 import contraband.param_mapping as mapping
 import contraband.utils as utils
 from contraband.pipelines.prediction import Predict
+import numpy as np
 
 
 class Trainer:
@@ -118,14 +119,20 @@ class Trainer:
 
         training_pipeline, train_request = pipeline.create_train_pipeline(
             volume_net)
+
+        history_path = os.path.join(curr_log_dir, "contrastive/history.npy")
+        loss, start_idx = utils.get_history(history_path, params['num_iterations'])
         with gp.build(training_pipeline):
-            for i in range(params['num_iterations']):
+            for i in range(start_idx, params['num_iterations']):
                 batch = training_pipeline.request_batch(train_request)
-                print(batch.loss)
+                loss[i] = batch.loss
+
+        np.save(history_path, loss, allow_pickle=True)
+
 
     def _seg_train_loop(self, params, pipeline, curr_log_dir):
         for checkpoint in utils.get_checkpoints(os.path.join(curr_log_dir, 
-                                                "contrastive/checkpoints")):
+                                                "contrastive/checkpoints"), match='checkpoint'):
             checkpoint_log_dir = os.path.join(curr_log_dir, 
                                               'seg/contrastive_ckpt' +
                                               checkpoint.split('_')[2]) 
@@ -145,10 +152,13 @@ class Trainer:
             training_pipeline, train_request = curr_pipeline.create_train_pipeline(
                 volume_net)
 
+            history_path = os.path.join(checkpoint_log_dir, "history.npy")
+            loss, start_idx = utils.get_history(history_path, params['num_iterations'])
             with gp.build(training_pipeline):
-                for i in range(params['num_iterations']):
+                for i in range(start_idx, params['num_iterations']):
                     batch = training_pipeline.request_batch(train_request)
-                    print(batch)
+                    loss[i] = batch.loss
+            np.save(history_path, loss, allow_pickle=True)
 
     def _validate(self, params, curr_log_dir):
 

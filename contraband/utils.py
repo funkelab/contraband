@@ -1,7 +1,7 @@
 import os
 import torch
 import logging
-
+import numpy as np
 
 def load_model(model, prefix, checkpoint_file):
     """Loads the model from the given checkpoint and prefix.
@@ -62,3 +62,14 @@ def get_checkpoints(path, match=None):
     print(checkpionts)
 
     return checkpionts
+
+
+def get_history(path, num_iterations):
+    if os.path.isfile(path):
+        history = np.load(path)
+        start_idx = history.shape[0]
+        return np.concatenate(
+            [history, np.zeros(num_iterations - start_idx)]), \
+            start_idx
+    else:
+        return np.zeros(num_iterations), 0
