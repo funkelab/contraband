@@ -18,8 +18,8 @@ class ContrastiveVolumeNet(torch.nn.Module):
             conv(in_channels, h_channels, (1, ) * dims),
             torch.nn.ReLU(), conv(h_channels, out_channels, (1, ) * dims))
 
-        self.out_shape = get_output_shape(self.segmentation_head, 
-                                          base_encoder.input_shape)
+        self.out_shape = get_output_shape(self.projection_head, 
+                                          base_encoder.out_shape)
         self.in_shape = base_encoder.in_shape
 
     def forward(self, raw_0, raw_1):

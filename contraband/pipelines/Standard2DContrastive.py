@@ -156,7 +156,7 @@ class Standard2DContrastive():
             RemoveChannelDim(emb_0) +
             RemoveChannelDim(emb_1) +
             gp.Snapshot(
-                output_dir=self.logdir + 'contrastive/snapshots',
+                output_dir=self.logdir + '/contrastive/snapshots',
                 output_filename='it{iteration}.hdf',
                 dataset_names={
                     raw_0: 'raw_0',

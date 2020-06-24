@@ -98,7 +98,7 @@ class Trainer:
         pipeline = mapping.map_pipeline(self.mode, self.model.pipeline)
 
         if self.mode == 'contrastive':
-            self._contrastive_train_loop(self.params[index], pipeline)
+            self._contrastive_train_loop(self.params[index], pipeline, curr_log_dir)
         elif self.mode == 'seg':
             self._seg_train_loop(self.params[index], pipeline, curr_log_dir)
         else:
@@ -106,7 +106,7 @@ class Trainer:
         # return history.history
 
     def _contrastive_train_loop(self, params, pipeline, curr_log_dir):
-        pipeline = pipeline(self.params, curr_log_dir)
+        pipeline = pipeline(params, curr_log_dir)
 
         volume_net = ContrastiveVolumeNet(self.model,
                                           params['h_channels'],

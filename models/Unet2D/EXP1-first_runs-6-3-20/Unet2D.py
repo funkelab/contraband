@@ -3,7 +3,7 @@ import funlib
 from contraband.models.ContrastiveVolumeNet import (
     SegmentationVolumeNet,
     ContrastiveVolumeNet)
-from contraband.utils import load_model
+from contraband.utils import load_model, get_output_shape
 
 
 class Unet2D(torch.nn.Module):
@@ -12,6 +12,7 @@ class Unet2D(torch.nn.Module):
 
         self.name = "Unet2D"
         self.pipeline = "Standard2D"
+        self.in_shape = (260, 260)
 
         self.unet = funlib.learn.torch.models.UNet(
             in_channels=1,
@@ -24,6 +25,9 @@ class Unet2D(torch.nn.Module):
 
         self.out_channels = self.unet.out_channels
         self.dims = self.unet.dims
+
+        self.out_shape = get_output_shape(self.unet, 
+                                          [1, 1, *self.in_shape])
 
     def forward(self, raw):
         return self.unet.forward(raw)
