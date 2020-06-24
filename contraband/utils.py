@@ -1,3 +1,4 @@
+import os
 import torch
 import logging
 
@@ -45,3 +46,19 @@ def create_logger(log_dir, name=None, index=None):
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
     return logger
+
+
+def get_output_shape(model, image_dim):
+    return model(torch.rand(*(image_dim))).data.shape
+
+
+def get_checkpoints(path, match=None):
+    print(path)
+    if match is None:
+        checkpionts = [filename for filename in os.listdir(path)]
+    else:
+        checkpionts = [filename for filename in os.listdir(path) if match in filename]
+    checkpionts.sort()
+    print(checkpionts)
+
+    return checkpionts

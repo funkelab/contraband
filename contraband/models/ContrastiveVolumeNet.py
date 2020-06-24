@@ -1,6 +1,6 @@
 import torch
 from funlib.learn.torch.models.conv4d import Conv4d
-from contraband.utils import load_model
+from contraband.utils import load_model, get_output_shape
 
 
 class ContrastiveVolumeNet(torch.nn.Module):
@@ -17,6 +17,10 @@ class ContrastiveVolumeNet(torch.nn.Module):
         self.projection_head = torch.nn.Sequential(
             conv(in_channels, h_channels, (1, ) * dims),
             torch.nn.ReLU(), conv(h_channels, out_channels, (1, ) * dims))
+
+        self.out_shape = get_output_shape(self.segmentation_head, 
+                                          base_encoder.input_shape)
+        self.in_shape = base_encoder.in_shape
 
     def forward(self, raw_0, raw_1):
 
@@ -35,6 +39,8 @@ class ContrastiveVolumeNet(torch.nn.Module):
 class SegmentationVolumeNet(torch.nn.Module):
     def __init__(self, base_encoder, seg_head):
         super().__init__()
+        self.in_shape = base_encoder.in_shape
+        self.out_shape = seg_head.out_shape
 
         self.base_encoder = base_encoder
         self.seg_head = seg_head
