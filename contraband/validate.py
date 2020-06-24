@@ -92,7 +92,7 @@ def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, chec
                         for threshold, metrics_per_threshold in metrics.items()}
     print("averaged_metrics: ", averaged_metrics)
     for threshold in thresholds:
-        metrics_file = os.path.join(curr_log_dir, 'metrics_' + str(threshold) + '.csv')
+        metrics_file = os.path.join(curr_log_dir, 'metrics_' + str(threshold) + '.json')
         if os.path.isfile(metrics_file):
             prev_metrics = pd.read_json(metrics_file)
             prev_metrics.loc[checkpoint] = pd.Series(averaged_metrics[threshold], name=checkpoint)
