@@ -69,7 +69,7 @@ class Standard2DSeg():
                 }
             ) +
             # SetDtype(gt_aff, np.uint8) +
-            gp.Normalize(raw, factor=1.0 / 4) +
+            gp.Normalize(raw, self.params['norm_factor']) +
             gp.Pad(raw, (0, 200, 200)) + 
             gp.Pad(gt_labels, (0, 300, 300)) +
             gp.RandomLocation()
@@ -115,9 +115,9 @@ class Standard2DSeg():
                 array_specs={
                     predictions: gp.ArraySpec(voxel_size=(1, 1)),
                 },
-                checkpoint_basename=self.logdir + '/seg/checkpoints/model',
+                checkpoint_basename=self.logdir + '/checkpoints/model',
                 save_every=1,
-                log_dir=self.logdir + "/seg",
+                log_dir=self.logdir,
                 log_every=self.log_every
             ) + 
             # everything is 2D at this point, plus extra dimensions for
@@ -126,7 +126,7 @@ class Standard2DSeg():
             # gt_aff     : (b, c=2, h, w)
             # predictions: (b, c=2, h, w)
             gp.Snapshot(
-                output_dir=self.logdir + '/snapshots/seg',
+                output_dir=self.logdir + '/snapshots',
                 output_filename='it{iteration}.hdf',
                 dataset_names={
                     raw: 'raw',

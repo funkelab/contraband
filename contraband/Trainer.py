@@ -7,6 +7,7 @@ import os
 from contraband.validate import validate
 import contraband.param_mapping as mapping
 import contraband.utils as utils
+from contraband.pipelines.prediction import Predict
 
 
 class Trainer:
@@ -41,6 +42,8 @@ class Trainer:
             self.params = mapping.generate_param_grid(self.params['contrastive'])
         elif mode == 'seg':
             self.params = mapping.generate_param_grid(self.params['seg'])
+        elif mode == 'val':
+            self.params = mapping.generate_param_grid(self.params['seg'])
         else:
             raise ValueError('Incorrect mode specified' + str(mode))
         self.mode = mode
@@ -60,11 +63,11 @@ class Trainer:
 
             os.makedirs(curr_log_dir + '/contrastive/checkpoints',
                         exist_ok=True)
-            os.makedirs(curr_log_dir + '/seg/checkpoints', exist_ok=True)
+            os.makedirs(os.path.join(curr_log_dir, 'seg'), exist_ok=True) 
 
             assert os.path.isdir(curr_log_dir + '/contrastive/checkpoints'), \
                 "Dir " + curr_log_dir + "doesn't exist"
-            assert os.path.isdir(curr_log_dir + '/seg/checkpoints'), \
+            assert os.path.isdir(curr_log_dir + '/seg'), \
                 "Dir " + curr_log_dir + "doesn't exist"
 
             logger = utils.create_logger(curr_log_dir, index=index)
@@ -93,15 +96,18 @@ class Trainer:
         mapping.map_params(self.params[index])
 
         pipeline = mapping.map_pipeline(self.mode, self.model.pipeline)
-        pipeline = pipeline(self.params[index], curr_log_dir)
 
         if self.mode == 'contrastive':
             self._contrastive_train_loop(self.params[index], pipeline)
-        else:
+        elif self.mode == 'seg':
             self._seg_train_loop(self.params[index], pipeline, curr_log_dir)
+        else:
+            self._validate(self.params[index], curr_log_dir)
         # return history.history
 
-    def _contrastive_train_loop(self, params, pipeline):
+    def _contrastive_train_loop(self, params, pipeline, curr_log_dir):
+        pipeline = pipeline(self.params, curr_log_dir)
+
         volume_net = ContrastiveVolumeNet(self.model, 20, 3)
 
         print("Model's state_dict:")
@@ -116,27 +122,49 @@ class Trainer:
                 print(batch.loss)
 
     def _seg_train_loop(self, params, pipeline, curr_log_dir):
-        checkpoint = curr_log_dir + '/contrastive/checkpoints/model_checkpoint_1'
-        seg_head = params['seg_head'](self.model, 20, 2)
-        volume_net = SegmentationVolumeNet(self.model, seg_head)
-        volume_net.load(checkpoint)
+        for checkpoint in utils.get_checkpoints(os.path.join(curr_log_dir, 
+                                                "contrastive/checkpoints")):
+            checkpoint_log_dir = os.path.join(curr_log_dir, 
+                                              'seg/contrastive_ckpt' +
+                                              checkpoint.split('_')[2]) 
+            os.makedirs(checkpoint_log_dir + '/checkpoints', exist_ok=True)
 
-        print("Model's state_dict:")
-        for param_tensor in volume_net.state_dict():
-            print(param_tensor, "\t", volume_net.state_dict()[param_tensor].size())
+            curr_pipeline = pipeline(params, checkpoint_log_dir)
+            seg_head = params['seg_head'](self.model, 20, 2)
+            volume_net = SegmentationVolumeNet(self.model, seg_head)
+            volume_net.load(os.path.join(curr_log_dir, 'contrastive/checkpoints', checkpoint))
 
-        training_pipeline, train_request = pipeline.create_train_pipeline(
-            volume_net)
+            print("Model's state_dict:")
+            for param_tensor in volume_net.state_dict():
+                print(param_tensor, "\t", volume_net.state_dict()[param_tensor].size())
 
-        with gp.build(training_pipeline):
-            for i in range(params['num_iterations']):
-                batch = training_pipeline.request_batch(train_request)
-                print(batch)
-                if i % 1 == 0:
-                    validate(volume_net, params['data_file'], 
-                             params['dataset']['validate'], curr_log_dir,
-                             params['thresholds'])
+            training_pipeline, train_request = curr_pipeline.create_train_pipeline(
+                volume_net)
 
+            with gp.build(training_pipeline):
+                for i in range(params['num_iterations']):
+                    batch = training_pipeline.request_batch(train_request)
+                    print(batch)
 
+    def _validate(self, params, curr_log_dir):
 
+        for contrastive_ckpt in utils.get_checkpoints(os.path.join(curr_log_dir, 
+                                                            "seg"), match='ckpt'):
+            for checkpoint in utils.get_checkpoints(os.path.join(curr_log_dir, 
+                                                    "seg", contrastive_ckpt, 'checkpoints'), match='checkpoint'):
+                checkpoint_log_dir = os.path.join(curr_log_dir, 
+                                                  'seg/contrastive_ckpt' +
+                                                  contrastive_ckpt.split('ckpt')[1]) 
+                os.makedirs(checkpoint_log_dir + '/checkpoints', exist_ok=True)
+                os.makedirs(checkpoint_log_dir + '/samples', exist_ok=True)
 
+                seg_head = params['seg_head'](self.model, 20, 2)
+                volume_net = SegmentationVolumeNet(self.model, seg_head)
+                volume_net.load(os.path.join(checkpoint_log_dir, 'checkpoints', checkpoint))
+
+                pipeline = Predict(volume_net, params['data_file'], 
+                                   params['dataset']['validate']['raw'], checkpoint_log_dir)
+
+                validate(volume_net, pipeline, params['data_file'], 
+                         params['dataset']['validate'], checkpoint_log_dir,
+                         params['thresholds'], checkpoint.split('_')[2])

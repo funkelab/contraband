@@ -102,7 +102,7 @@ class Standard2DContrastive():
                         voxel_size=(1, 1, 1),
                         interpolatable=True)
                 }) +
-            gp.Normalize(raw, factor=1.0/4) +
+            gp.Normalize(raw, self.params['norm_factor']) +
             gp.Pad(raw, (0, 200, 200)) +
             AddRandomPoints(points, for_array=raw, density=0.0005) 
 
@@ -156,7 +156,7 @@ class Standard2DContrastive():
             RemoveChannelDim(emb_0) +
             RemoveChannelDim(emb_1) +
             gp.Snapshot(
-                output_dir=self.logdir + '/snapshots/contrastive',
+                output_dir=self.logdir + 'contrastive/snapshots',
                 output_filename='it{iteration}.hdf',
                 dataset_names={
                     raw_0: 'raw_0',

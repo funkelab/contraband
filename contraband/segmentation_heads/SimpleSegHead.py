@@ -1,6 +1,6 @@
 import torch
 from funlib.learn.torch.models.conv4d import Conv4d
-from contraband.utils import load_model
+from contraband.utils import load_model, get_output_shape
 
 
 class SimpleSegHead(torch.nn.Module):
@@ -27,6 +27,9 @@ class SimpleSegHead(torch.nn.Module):
             torch.nn.ReLU(),
             conv(h_channels, out_channels, (1,) * self.dims)
         )
+
+        self.out_shape = get_output_shape(self.segmentation_head, 
+                                          base_encoder.out_shape)
         # add sigmoid
 
     def forward(self, h):

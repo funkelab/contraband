@@ -21,26 +21,28 @@ class Predict():
         with gp.build(pipeline):
             pipeline.request_batch(gp.BatchRequest())
             with h5py.File(os.path.join(self.curr_log_dir,
-                                        'seg/predictions.hdf'), 'r') as f:
+                                        'predictions.hdf'), 'r') as f:
 
                 print("datasets: ", list(f.keys()))
-                pred_affs = f[os.path.join(self.curr_log_dir, "seg/pred_affs")]
-                return np.array(pred_affs)
+                predictions = f[os.path.join(self.curr_log_dir, "predictions")]
+                return np.array(predictions)
 
     def make_pipeline(self):
         raw = gp.ArrayKey('RAW')
         pred_affs = gp.ArrayKey('PREDICTIONS')
-        
-        input_size = gp.Coordinate((260, 260))
-        output_size = gp.Coordinate((168, 168))
+
+        source_shape = zarr.open(self.data_file)[self.dataset].shape
+        raw_roi = gp.Roi(np.zeros(len(source_shape[1:])), source_shape[1:])
+        print(raw_roi)
+
+        print(self.model.in_shape)
+        print("Out channels: ", list(self.model.out_shape)[-raw_roi.dims():])
+        input_size = gp.Coordinate(self.model.in_shape)
+        output_size = gp.Coordinate(list(self.model.out_shape)[-raw_roi.dims():])
 
         request = gp.BatchRequest()
         request.add(raw, input_size)
         request.add(pred_affs, output_size)
-
-        source_shape = zarr.open(self.data_file)[self.dataset].shape
-        raw_roi = gp.Roi((0, 0), source_shape[1:])
-        print(raw_roi)
 
         context = (input_size - output_size) / 2
 
@@ -53,14 +55,12 @@ class Predict():
                 array_specs={
                     raw: gp.ArraySpec(
                         roi=raw_roi,
-                        voxel_size=(1, 1),
                         interpolatable=True)
                 }
             ) +
             AddChannelDim(raw, axis=1)
 
-            # RemoveSpatialDim(raw)
-            # raw      : (c=1, l=1, h, w)
+            # raw      : (c=1, roi)
         )
 
         with gp.build(source):
@@ -72,16 +72,11 @@ class Predict():
         pipeline = (
             source +
 
-            gp.Normalize(raw, factor=1.0 / 4) +
+            gp.Normalize(raw, factor=0.25) +
             gp.Pad(raw, context) +
-            # raw      : (l=1, h, w)
-            # raw      : (c=1, h, w)
-            # gt_aff   : (c=2, h, w)
-            # InspectBatch('before stack:') +
+
             gp.PreCache() +
-            # raw      : (b, c=1, h, w)
-            # gt_aff   : (b, c=2, h, w)
-            # (which is what train requires)
+
             gp.torch.Predict(
                 self.model,
                         
@@ -92,17 +87,16 @@ class Predict():
                     0: pred_affs
                 },
                 array_specs={
-                    pred_affs: gp.ArraySpec(roi=raw_roi,
-                                            voxel_size=(1, 1)),
+                    pred_affs: gp.ArraySpec(roi=raw_roi),
                 }
             ) + 
 
             gp.Hdf5Write(
                 {
                     pred_affs: os.path.join(self.curr_log_dir, 
-                                            'seg/pred_affs'),
+                                            'predictions'),
                 },
-                output_dir=os.path.join(self.curr_log_dir, 'seg'),
+                output_dir=self.curr_log_dir,
                 output_filename='predictions.hdf',
                 compression_type='gzip'
             ) +
