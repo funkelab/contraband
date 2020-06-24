@@ -108,7 +108,9 @@ class Trainer:
     def _contrastive_train_loop(self, params, pipeline, curr_log_dir):
         pipeline = pipeline(self.params, curr_log_dir)
 
-        volume_net = ContrastiveVolumeNet(self.model, 20, 3)
+        volume_net = ContrastiveVolumeNet(self.model,
+                                          params['h_channels'],
+                                          params['out_channels'])
 
         print("Model's state_dict:")
         for param_tensor in volume_net.state_dict():
@@ -130,7 +132,9 @@ class Trainer:
             os.makedirs(checkpoint_log_dir + '/checkpoints', exist_ok=True)
 
             curr_pipeline = pipeline(params, checkpoint_log_dir)
-            seg_head = params['seg_head'](self.model, 20, 2)
+            seg_head = params['seg_head'](self.model, 
+                                          params['h_channels'],
+                                          params['out_channels'])
             volume_net = SegmentationVolumeNet(self.model, seg_head)
             volume_net.load(os.path.join(curr_log_dir, 'contrastive/checkpoints', checkpoint))
 
@@ -158,12 +162,13 @@ class Trainer:
                 os.makedirs(checkpoint_log_dir + '/checkpoints', exist_ok=True)
                 os.makedirs(checkpoint_log_dir + '/samples', exist_ok=True)
 
-                seg_head = params['seg_head'](self.model, 20, 2)
+                seg_head = params['seg_head'](self.model, 
+                                              params['h_channels'],
+                                              params['out_channels'])
                 volume_net = SegmentationVolumeNet(self.model, seg_head)
                 volume_net.load(os.path.join(checkpoint_log_dir, 'checkpoints', checkpoint))
 
-                pipeline = Predict(volume_net, params['data_file'], 
-                                   params['dataset']['validate']['raw'], checkpoint_log_dir)
+                pipeline = Predict(volume_net, params, checkpoint_log_dir)
 
                 validate(volume_net, pipeline, params['data_file'], 
                          params['dataset']['validate'], checkpoint_log_dir,

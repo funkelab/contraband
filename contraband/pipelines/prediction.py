@@ -8,9 +8,11 @@ import numpy as np
 
 class Predict():
 
-    def __init__(self, model, data_file, dataset, curr_log_dir):
-        self.data_file = data_file
-        self.dataset = dataset
+    def __init__(self, model, params, curr_log_dir):
+        self.data_file = params['data_file']
+        self.dataset = params['dataset']['validate']['raw']
+
+        self.params = params
         self.model = model
         self.curr_log_dir = curr_log_dir
 
@@ -72,7 +74,7 @@ class Predict():
         pipeline = (
             source +
 
-            gp.Normalize(raw, factor=0.25) +
+            gp.Normalize(raw, factor=self.params['norm_factor']) +
             gp.Pad(raw, context) +
 
             gp.PreCache() +
