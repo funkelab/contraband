@@ -6,11 +6,16 @@
       "optimizer": ["adam"],
       "lr": [1e-5],
       "epochs": [3],
-      "num_iterations": [9],
+      "num_iterations": [11],
       "elastic": [true],
       "blur": [true],
       "simple": [false],
-      "noise": [false]
+      "noise": [false],
+      "norm_factor": [0.25],
+      "save_every": [3],
+
+      "h_channels": [20],
+      "out_channels": [3]
   },
   "seg": {
       "data_file": ["data/ctc/Fluo-N2DH-SIM+.zarr"],
@@ -23,12 +28,17 @@
       "optimizer": ["adam"],
       "lr": [1e-5],
       "epochs": [3],
-      "num_iterations": [1],
+      "num_iterations": [7],
       "elastic": [true],
       "blur": [true],
       "simple": [false],
       "noise": [false],
       "seg_head": ["SimpleSegHead"],
-      "thresholds": [[0.5]]
+      "thresholds": [[0.5, 0.75]],
+      "norm_factor": [0.25],
+      "save_every": [3],
+
+      "h_channels": [20],
+      "out_channels": [2]
   }
 }
