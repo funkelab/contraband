@@ -91,15 +91,19 @@ def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, chec
                         for metric, total in metrics_per_threshold.items()}
                         for threshold, metrics_per_threshold in metrics.items()}
     print("averaged_metrics: ", averaged_metrics)
-    for threshold in thresholds:
-        metrics_file = os.path.join(curr_log_dir, 'metrics_' + str(threshold) + '.json')
-        if os.path.isfile(metrics_file):
-            prev_metrics = pd.read_json(metrics_file)
-            prev_metrics.loc[checkpoint] = pd.Series(averaged_metrics[threshold], name=checkpoint)
-            prev_metrics.to_json(metrics_file) 
 
+    for threshold in thresholds:
+        metrics_file = os.path.join(curr_log_dir, 'metrics_' + str(threshold) + '.csv')
+        if os.path.isfile(metrics_file):
+            prev_metrics = pd.read_csv(metrics_file, index_col=0)
+            print(prev_metrics.columns)
+            print("test: ", list(averaged_metrics[threshold].values()))
+            prev_metrics.loc[checkpoint] = list(averaged_metrics[threshold].values())
+            prev_metrics.to_csv(metrics_file) 
+            print('prev_metrics', prev_metrics)
         else: 
-            averaged_metrics = pd.DataFrame([averaged_metrics], index=[checkpoint]).to_json(
+            temp = pd.DataFrame([averaged_metrics[threshold]], index=[checkpoint]).to_csv(
                 metrics_file) 
+            print("temp: ", temp)
     
     save_samples(samples, labels, labels_dataset, thresholds, curr_log_dir, checkpoint)
