@@ -3,7 +3,7 @@ import torch
 import logging
 import numpy as np
 
-def load_model(model, prefix, checkpoint_file):
+def load_model(model, prefix, checkpoint_file, freeze_model=False):
     """Loads the model from the given checkpoint and prefix.
 
     Args:
@@ -29,6 +29,9 @@ def load_model(model, prefix, checkpoint_file):
     adapted_dict = {k: v for k, v in adapted_dict.items() 
                     if not k.startswith("projection_head")}
     model.load_state_dict(adapted_dict)
+    if freeze_model:
+        for param in model.parameters():
+            param.requires_grad = False
     
     return model
 
