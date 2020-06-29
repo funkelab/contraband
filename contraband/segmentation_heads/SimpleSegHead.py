@@ -26,7 +26,7 @@ class SimpleSegHead(torch.nn.Module):
             conv(self.in_channels, h_channels, (1,) * self.dims),
             torch.nn.ReLU(),
             conv(h_channels, out_channels, (1,) * self.dims),
-            torch.nn.ReLU()
+            torch.nn.Sigmoid()
         )
 
         self.out_shape = get_output_shape(self.segmentation_head, 
