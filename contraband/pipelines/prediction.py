@@ -21,7 +21,7 @@ class Predict():
         pipeline, request, predictions = self.make_pipeline()
 
         with gp.build(pipeline):
-            # pipeline.request_batch(gp.BatchRequest())
+            pipeline.request_batch(gp.BatchRequest())
             with h5py.File(os.path.join(self.curr_log_dir,
                                         'predictions.hdf'), 'r') as f:
 
