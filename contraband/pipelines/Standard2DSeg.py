@@ -86,7 +86,8 @@ class Standard2DSeg():
             # gt_labels: (l=1, h, w)
             gp.AddAffinities([[0, -1, 0], [0, 0, -1]],
                              gt_labels, gt_aff) + 
-            gp.Normalize(gt_aff) + 
+            #gp.Normalize(gt_aff, factor=1.0) + 
+            SetDtype(gt_aff, np.float32) +
             # raw      : (l=1, h, w)
             # gt_aff   : (c=2, l=1, h, w)
             AddChannelDim(raw) +
@@ -157,6 +158,6 @@ class Standard2DSeg():
                 transpose_only=(1, 2)) 
 
         if 'noise' in self.params and self.params['noise']:
-            source = source + gp.NoiseAugment(raw, var=0.01)
+            source = source + gp.NoiseAugment(raw, var=0.001)
 
         return source

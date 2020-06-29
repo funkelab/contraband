@@ -12,7 +12,9 @@ class SetDtype(gp.BatchFilter):
 
     def setup(self):
         self.enable_autoskip()
-        self.updates(self.array, self.spec[self.array])
+        spec = self.spec[self.array].copy()
+        spec.dtype = self.dtype
+        self.updates(self.array, spec) 
 
     def prepare(self, request):
         deps = gp.BatchRequest()
@@ -21,7 +23,7 @@ class SetDtype(gp.BatchFilter):
 
     def process(self, batch, request):
         array = batch.arrays[self.array]
-        # array.data = array.data.astype(self.dtype)
+        array.data = array.data.astype(self.dtype)
         array.spec.dtype = self.dtype
 
 
