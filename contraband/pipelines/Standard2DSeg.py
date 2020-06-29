@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 
 class Standard2DSeg():
 
-    def __init__(self, params, logdir, log_every=1):
+    def __init__(self, params, logdir, log_every=500):
 
         self.params = params
         self.logdir = logdir
