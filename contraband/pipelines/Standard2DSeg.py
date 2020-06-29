@@ -131,7 +131,7 @@ class Standard2DSeg():
                 dataset_names={
                     raw: 'raw',
                     predictions: 'predictions',
-                    gt_labels: 'gt_labels'
+                    gt_aff: 'gt_aff'
                 },
                 every=self.params['save_every']) +
             gp.PrintProfilingStats(every=10)
