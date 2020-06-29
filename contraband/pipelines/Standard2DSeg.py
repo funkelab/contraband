@@ -48,6 +48,8 @@ class Standard2DSeg():
         raw_roi = gp.Roi((0, 0, 0), source_shape)
         gt_roi = gp.Roi((0, 0, 0), gt_source_shape) 
 
+        context = (gp.Coordinate((1, 260, 260)) - gp.Coordinate((1, 168, 168))) / 2
+
         source = (
             gp.ZarrSource(
                 data_file,
@@ -70,8 +72,8 @@ class Standard2DSeg():
             ) +
             # SetDtype(gt_aff, np.uint8) +
             gp.Normalize(raw, self.params['norm_factor']) +
-            gp.Pad(raw, (0, 200, 200)) + 
-            gp.Pad(gt_labels, (0, 300, 300)) +
+            gp.Pad(raw, context) + 
+            gp.Pad(gt_labels, context) +
             gp.RandomLocation()
             # raw      : (l=1, h, w)
             # gt_labels: (l=1, h, w)
@@ -84,7 +86,8 @@ class Standard2DSeg():
             # gt_labels: (l=1, h, w)
             gp.AddAffinities([[0, -1, 0], [0, 0, -1]],
                              gt_labels, gt_aff) + 
-            gp.Normalize(gt_aff) + 
+            #gp.Normalize(gt_aff, factor=1.0) + 
+            SetDtype(gt_aff, np.float32) +
             # raw      : (l=1, h, w)
             # gt_aff   : (c=2, l=1, h, w)
             AddChannelDim(raw) +
@@ -131,7 +134,7 @@ class Standard2DSeg():
                 dataset_names={
                     raw: 'raw',
                     predictions: 'predictions',
-                    gt_labels: 'gt_labels'
+                    gt_aff: 'gt_aff'
                 },
                 every=self.params['save_every']) +
             gp.PrintProfilingStats(every=10)
@@ -155,6 +158,6 @@ class Standard2DSeg():
                 transpose_only=(1, 2)) 
 
         if 'noise' in self.params and self.params['noise']:
-            source = source + gp.NoiseAugment(raw, var=0.01)
+            source = source + gp.NoiseAugment(raw, var=0.001)
 
         return source
