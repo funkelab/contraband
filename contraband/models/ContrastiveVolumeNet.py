@@ -1,6 +1,7 @@
 import torch
 from funlib.learn.torch.models.conv4d import Conv4d
 from contraband.utils import load_model, get_output_shape
+from contraband import utils
 
 
 class ContrastiveVolumeNet(torch.nn.Module):
@@ -49,7 +50,7 @@ class SegmentationVolumeNet(torch.nn.Module):
         h = self.base_encoder(raw)
         z = self.seg_head(h)
 
-        return z
+        return z, h
 
     def load(self, checkpoint_file):
         self.base_encoder = load_model(self.base_encoder,
