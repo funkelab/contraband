@@ -36,11 +36,19 @@ class Standard2DSeg():
         gt_labels = gp.ArrayKey('LABELS')
         gt_aff = gp.ArrayKey('AFFINITIES')
         predictions = gp.ArrayKey('PREDICTIONS')
+        emb = gp.ArrayKey('EMBEDDING')
 
         request = gp.BatchRequest()
         request.add(raw, (260, 260))
         request.add(gt_aff, (168, 168))
         request.add(predictions, (168, 168))
+
+        snapshot_request = gp.BatchRequest()
+        snapshot_request[emb] = gp.ArraySpec(
+            roi=gp.Roi(
+                (0, 0),
+                model.base_encoder.out_shape[2:]))
+        
         
         source_shape = zarr.open(data_file)[raw_dataset].shape
         gt_source_shape = zarr.open(data_file)[gt_dataset].shape
@@ -113,7 +121,8 @@ class Standard2DSeg():
                     1: gt_aff
                 },
                 outputs={
-                    0: predictions
+                    0: predictions,
+                    1: emb
                 },
                 array_specs={
                     predictions: gp.ArraySpec(voxel_size=(1, 1)),
@@ -134,8 +143,10 @@ class Standard2DSeg():
                 dataset_names={
                     raw: 'raw',
                     predictions: 'predictions',
-                    gt_aff: 'gt_aff'
+                    gt_aff: 'gt_aff',
+                    emb: 'emb'
                 },
+                additional_request=snapshot_request,
                 every=self.params['save_every']) +
             gp.PrintProfilingStats(every=10)
         )
