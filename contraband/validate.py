@@ -20,7 +20,7 @@ def save_samples(pred_affs, pred_affs_ds, samples, labels, labels_dataset, thres
                                ds_name='segmentation_' + str(sample),
                                total_roi=labels_dataset.roi,
                                voxel_size=labels_dataset.voxel_size,
-                               dtype=labels_dataset.dtype,
+                               dtype=np.uint64,
                                num_channels=len(thresholds))
 
         gt = daisy.prepare_ds(os.path.join(curr_log_dir,
@@ -28,7 +28,7 @@ def save_samples(pred_affs, pred_affs_ds, samples, labels, labels_dataset, thres
                               ds_name='gt_' + str(sample),
                               total_roi=labels_dataset.roi,
                               voxel_size=labels_dataset.voxel_size,
-                              dtype=labels_dataset.dtype,
+                              dtype=np.uint64,
                               num_channels=len(thresholds))
 
         pred = daisy.prepare_ds(os.path.join(curr_log_dir,
@@ -37,7 +37,7 @@ def save_samples(pred_affs, pred_affs_ds, samples, labels, labels_dataset, thres
                                 total_roi=pred_affs_ds.roi,
                                 voxel_size=pred_affs_ds.voxel_size,
                                 dtype=pred_affs_ds.dtype,
-                                num_channels=len(thresholds))
+                                num_channels=len(samples))
         
         seg.data[:] = np.squeeze(samples[sample])
         gt.data[:] = np.squeeze(np.broadcast_to(labels[sample], samples[sample].shape))
