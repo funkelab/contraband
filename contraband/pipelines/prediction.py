@@ -4,6 +4,7 @@ import os
 import zarr
 from contraband.pipelines.utils import AddChannelDim, RemoveSpatialDim, RemoveChannelDim
 import numpy as np
+import daisy
 
 
 class Predict():
@@ -21,13 +22,10 @@ class Predict():
         pipeline, request, predictions = self.make_pipeline()
 
         with gp.build(pipeline):
-            pipeline.request_batch(gp.BatchRequest())
-            with h5py.File(os.path.join(self.curr_log_dir,
-                                        'predictions.hdf'), 'r') as f:
-
-                print("datasets: ", list(f.keys()))
-                predictions = f[os.path.join(self.curr_log_dir, "predictions")]
-                return np.array(predictions)
+            #pipeline.request_batch(gp.BatchRequest())
+            f = daisy.open_ds(os.path.join(self.curr_log_dir, 'predictions.hdf'),
+                              os.path.join(self.curr_log_dir, "predictions"))
+            return f 
 
     def make_pipeline(self):
         raw = gp.ArrayKey('RAW')

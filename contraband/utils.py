@@ -2,6 +2,7 @@ import os
 import torch
 import logging
 import numpy as np
+import daisy
 
 def load_model(model, prefix, checkpoint_file, freeze_model=False):
     """Loads the model from the given checkpoint and prefix.
@@ -74,3 +75,20 @@ def get_history(path):
         return history.tolist(), start_idx
     else:
         return [], 0
+
+
+def save_zarr(data, zarr_file, ds, roi, voxel_size=(1, 1, 1), 
+              num_channels=1, dtype=None):
+    if not isinstance(roi, daisy.Roi):   
+        roi = daisy.Roi([0 for d in range(len(roi))],
+                        roi)
+    if dtype is None:
+        dtype = data.dtype
+
+    dataset = daisy.prepare_ds(zarr_file,
+                               ds_name=ds,
+                               total_roi=roi,
+                               voxel_size=voxel_size,
+                               dtype=data.dtype,
+                               num_channels=num_channels)
+    dataset.data[:] = data

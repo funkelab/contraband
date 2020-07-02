@@ -1,12 +1,18 @@
 import numpy as np
 import mahotas
 from scipy import ndimage
+from contraband import utils
+import os
 
 use_mahotas_watershed = True
 seed_distance = 10
 
 
-def get_seeds(boundary, method='grid', next_id=1):
+def get_seeds(boundary, method='grid', next_id=1, 
+              curr_log_dir='',
+              curr_ckpt=0,
+              curr_sample=0,
+              max_samples=0):
 
     if method == 'grid':
 
@@ -38,23 +44,47 @@ def get_seeds(boundary, method='grid', next_id=1):
         seeds, num_seeds = mahotas.label(maxima)
         seeds += next_id
         seeds[seeds == next_id] = 0
+        
+        return seeds, num_seeds, distance
+
 
     return seeds, num_seeds
 
 
-def watershed(affs, seed_method):
+def watershed(affs, seed_method, curr_log_dir='',
+              curr_ckpt=0,
+              curr_sample=0,
+              max_samples=0):
 
     affs_xy = 1.0 - 0.5 * (affs[1] + affs[2])
     depth = affs_xy.shape[0]
 
     fragments = np.zeros_like(affs[0]).astype(np.uint64)
 
+    if curr_sample < max_samples:
+        utils.save_zarr(affs_xy,
+                        os.path.join(curr_log_dir, 'samples/sample_' +
+                                     str(curr_ckpt) + '.zarr'),
+                        ds='boundary_' + str(curr_sample),
+                        roi=affs_xy.shape) 
     next_id = 1
+    distances = np.zeros_like(affs_xy) 
     for z in range(depth):
 
-        seeds, num_seeds = get_seeds(affs_xy[z],
-                                     next_id=next_id,
-                                     method=seed_method)
+        seed_data = get_seeds(affs_xy[z],
+                              next_id=next_id,
+                              method=seed_method,
+                              curr_log_dir=curr_log_dir,
+                              curr_ckpt=curr_ckpt,
+                              curr_sample=curr_sample,
+                              max_samples=max_samples)
+
+        if seed_method == 'maxima_distance':
+            seeds, num_seeds, distance = seed_data
+            distances[z] = distance
+        else:
+            seeds, num_seeds = seed_data
+
 
         if use_mahotas_watershed:
             fragments[z] = mahotas.cwatershed(affs_xy[z], seeds)
@@ -63,5 +93,12 @@ def watershed(affs, seed_method):
                 (255.0 * affs_xy[z]).astype(np.uint8), seeds)
 
         next_id += num_seeds
+
+    if curr_sample < max_samples:
+        utils.save_zarr(distances,
+                        os.path.join(curr_log_dir, 'samples/sample_' +
+                                     str(curr_ckpt) + '.zarr'),
+                        ds='dist_trfm' + str(curr_sample),
+                        roi=distances.shape) 
 
     return fragments
