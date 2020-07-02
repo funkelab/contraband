@@ -22,7 +22,12 @@ class Predict():
         pipeline, request, predictions = self.make_pipeline()
 
         with gp.build(pipeline):
-            #pipeline.request_batch(gp.BatchRequest())
+            try:
+                os.remove(os.path.join(self.curr_log_dir, 'predictions.hdf'))
+            except OSError as e:
+                pass
+
+            pipeline.request_batch(gp.BatchRequest())
             f = daisy.open_ds(os.path.join(self.curr_log_dir, 'predictions.hdf'),
                               os.path.join(self.curr_log_dir, "predictions"))
             return f 
