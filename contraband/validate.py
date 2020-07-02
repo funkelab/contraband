@@ -5,13 +5,14 @@ import numpy as np
 import waterz
 import daisy
 import pandas as pd
+from contraband import utils
 
 
 def insert_dim(a, s, dim=0):
     return a[:dim] + (s, ) + a[dim:]
 
 
-def save_samples(samples, labels, labels_dataset, thresholds, curr_log_dir, checkpoint):
+def save_samples(pred_affs, pred_affs_ds, samples, labels, labels_dataset, thresholds, curr_log_dir, checkpoint):
     # [samples, thresholds, ....)
     for sample in range(len(samples)):
         seg = daisy.prepare_ds(os.path.join(curr_log_dir, 
@@ -29,9 +30,18 @@ def save_samples(samples, labels, labels_dataset, thresholds, curr_log_dir, chec
                               voxel_size=labels_dataset.voxel_size,
                               dtype=labels_dataset.dtype,
                               num_channels=len(thresholds))
+
+        pred = daisy.prepare_ds(os.path.join(curr_log_dir,
+                                'samples/sample_' + str(checkpoint) + '.zarr'),
+                                ds_name='affs_' + str(sample),
+                                total_roi=pred_affs_ds.roi,
+                                voxel_size=pred_affs_ds.voxel_size,
+                                dtype=pred_affs_ds.dtype,
+                                num_channels=len(thresholds))
         
         seg.data[:] = np.squeeze(samples[sample])
         gt.data[:] = np.squeeze(np.broadcast_to(labels[sample], samples[sample].shape))
+        pred.data[:] = pred_affs[sample]
 
 
 def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, checkpoint):
@@ -55,8 +65,12 @@ def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, chec
             The thresholds to use for the agglomeration. 
     """
 
-    pred_aff = pipeline.get_predictions()
+    pred_aff_ds = pipeline.get_predictions()
+    pred_aff = np.array(pred_aff_ds.data)
     labels_dataset = daisy.open_ds(data_file, dataset['gt'], 'r')
+    #pred_aff_ds = daisy.open_ds("models/Unet2D/EXP1-first_runs-6-24-20/combination-0/seg/contrastive_ckpt150000/snapshots/it1.hdf", "gt_aff", 'r')
+    #pred_aff = np.array(pred_aff_ds.data)
+    #labels_dataset = daisy.open_ds("models/Unet2D/EXP1-first_runs-6-24-20/combination-0/seg/contrastive_ckpt150000/snapshots/it1.hdf", "gt_aff", 'r')
 
     labels = np.array(labels_dataset.data).astype(np.uint64)
     samples = np.zeros((2, len(thresholds), *labels.shape[1:]))
@@ -64,11 +78,17 @@ def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, chec
                for threshold in thresholds}
     for i in range(pred_aff.shape[0]):
         curr_segmentation = agglomerate(pred_aff[i],
-                                        thresholds=thresholds, is_2d=True)
+                                        thresholds=thresholds,
+                                        is_2d=True,
+                                        curr_log_dir=curr_log_dir,
+                                        curr_ckpt=checkpoint,
+                                        curr_sample=i,
+                                        max_samples=samples.shape[0])
 
         threshold = 0
         for segmentation, label in zip(curr_segmentation, labels[i]):
             curr_segmentation = segmentation
+
             # Save required number of samples
             if i < samples.shape[0]:
                 samples[i] = curr_segmentation
@@ -106,4 +126,4 @@ def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, chec
                 metrics_file) 
             print("temp: ", temp)
     
-    save_samples(samples, labels, labels_dataset, thresholds, curr_log_dir, checkpoint)
+    save_samples(pred_aff, pred_aff_ds, samples, labels, labels_dataset, thresholds, curr_log_dir, checkpoint)

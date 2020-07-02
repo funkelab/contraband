@@ -2,6 +2,8 @@ import numpy as np
 import time
 import waterz
 from contraband.post_processing.watershed import watershed
+from contraband import utils
+import os
 
 scoring_functions = {
     'mean_aff':
@@ -64,10 +66,24 @@ def agglomerate_with_waterz(affs,
                             merge_function='median_aff',
                             init_with_max=True,
                             return_merge_history=False,
-                            return_region_graph=False):
+                            return_region_graph=False,
+                            curr_log_dir='',
+                            curr_ckpt=0,
+                            curr_sample=0,
+                            max_samples=0):
 
     print("Extracting initial fragments...")
-    fragments = watershed(affs, 'maxima_distance')
+    fragments = watershed(affs, 'maxima_distance',
+                          curr_log_dir=curr_log_dir,
+                          curr_ckpt=curr_ckpt,
+                          curr_sample=curr_sample,
+                          max_samples=max_samples)
+    if curr_sample < max_samples:
+        utils.save_zarr(fragments,
+                        os.path.join(curr_log_dir, 'samples/sample_' +
+                                     str(curr_ckpt) + '.zarr'),
+                        ds='fragment_' + str(curr_sample),
+                        roi=fragments.shape) 
 
     print("Agglomerating with %s", merge_function)
 
@@ -90,18 +106,23 @@ def agglomerate_with_waterz(affs,
         return_region_graph=return_region_graph)
 
 
-def agglomerate(affs, thresholds, is_2d,
-                **kwargs):
+def agglomerate(affs, thresholds, is_2d, curr_log_dir, curr_sample,
+                max_samples, curr_ckpt, **kwargs):
 
     thresholds = list(thresholds)
 
     if is_2d:
         affs = affs[:, np.newaxis, :, :]
-        affs = np.concatenate((affs, np.zeros_like(affs)))
+        affs = np.concatenate((np.zeros_like(affs[0])[np.newaxis], affs))
+    print(affs.shape)
 
     print("Agglomerating " + " at thresholds " + str(thresholds))
 
     start = time.time()
-    segmentation = agglomerate_with_waterz(affs, thresholds)
+    segmentation = agglomerate_with_waterz(affs, thresholds, 
+                                           curr_log_dir=curr_log_dir,
+                                           curr_sample=curr_sample,
+                                           max_samples=max_samples,
+                                           curr_ckpt=curr_ckpt)
     print("Finished agglomeration in " + str(time.time() - start) + "s")
     return segmentation
