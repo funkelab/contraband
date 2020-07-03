@@ -28,8 +28,8 @@ class Predict():
                 pass
 
             pipeline.request_batch(gp.BatchRequest())
-            f = daisy.open_ds(os.path.join(self.curr_log_dir, 'predictions.hdf'),
-                              os.path.join(self.curr_log_dir, "predictions"))
+            f = daisy.open_ds(os.path.join(self.curr_log_dir, 'predictions.zarr'), 
+                              "predictions")
             return f 
 
     def make_pipeline(self):
@@ -96,13 +96,12 @@ class Predict():
                 }
             ) + 
 
-            gp.Hdf5Write(
+            gp.ZarrWrite(
                 {
-                    pred_affs: os.path.join(self.curr_log_dir, 
-                                            'predictions'),
+                    pred_affs: 'predictions',
                 },
                 output_dir=self.curr_log_dir,
-                output_filename='predictions.hdf',
+                output_filename='predictions.zarr',
                 compression_type='gzip'
             ) +
             gp.Scan(request)
