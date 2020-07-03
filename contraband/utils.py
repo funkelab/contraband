@@ -92,3 +92,13 @@ def save_zarr(data, zarr_file, ds, roi, voxel_size=(1, 1, 1),
                                dtype=data.dtype,
                                num_channels=num_channels)
     dataset.data[:] = data
+
+
+def log_params(curr_log_dir, index, root_handler, params):
+    logger = create_logger(curr_log_dir, index=index)
+    logger.addHandler(root_handler)
+
+    logger.info("Current log dir: " + curr_log_dir)
+    logger.info('Training with parameter combination ' + str(index))
+    logger.info("With parameters: " + str(params[index]))
+    logger.info("")

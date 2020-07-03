@@ -38,6 +38,8 @@ class Trainer:
         copy("contraband/models/" + model.name + ".py", self.logdir)
 
         self.model = model
+        self.contrastive_combs = len(mapping.generate_param_grid(self.params['contrastive']))
+
         print(self.params)
         if mode == 'contrastive':
             self.params = mapping.generate_param_grid(self.params['contrastive'])
@@ -55,7 +57,7 @@ class Trainer:
         # parameters["val_accuracy"] = np.nan
         # parameters["val_loss"] = np.nan
 
-        for index in range(len(self.params)):
+        for index in range(self.contrastive_combs):
             curr_log_dir = os.path.join(self.logdir,
                                         "combination-" + str(index))
             os.makedirs(curr_log_dir, exist_ok=True)
@@ -71,14 +73,7 @@ class Trainer:
             assert os.path.isdir(curr_log_dir + '/seg'), \
                 "Dir " + curr_log_dir + "doesn't exist"
 
-            logger = utils.create_logger(curr_log_dir, index=index)
-            logger.addHandler(self.root_handler)
-
-            logger.info('Training with parameter combination ' + str(index))
-            logger.info("With parameters: " + str(self.params[index]))
-            logger.info("")
-
-            self.train_one(index, logger)
+            self.train_one(index)
 
             # parameters.loc[index, 'val_loss'] = history['val_loss'][0]
             # parameters.loc[index, 'val_accuracy'] = history['val_accuracy'][0]
@@ -89,21 +84,32 @@ class Trainer:
 
         # parameters.to_csv(self.logdir + "/hyperparameter_matrix.csv")
 
-    def train_one(self, index, logger):
+    def train_one(self, index):
 
         curr_log_dir = os.path.join(self.logdir, "combination-" + str(index))
-        logger.info("Current log dir: " + curr_log_dir)
-
-        mapping.map_params(self.params[index])
 
         pipeline = mapping.map_pipeline(self.mode, self.model.pipeline)
 
         if self.mode == 'contrastive':
+            utils.log_params(curr_log_dir, index, self.root_handler, self.params)
+            mapping.map_params(self.params[index])
             self._contrastive_train_loop(self.params[index], pipeline, curr_log_dir)
         elif self.mode == 'seg':
-            self._seg_train_loop(self.params[index], pipeline, curr_log_dir)
+            for i, seg_comb in enumerate(self.params):
+                mapping.map_params(self.params[i])
+                seg_comb_dir = os.path.join(curr_log_dir, "seg/combination-" + str(i))
+                os.makedirs(seg_comb_dir, exist_ok=True)
+
+                utils.log_params(seg_comb_dir, i, self.root_handler, self.params)
+
+                self._seg_train_loop(seg_comb, pipeline, curr_log_dir, seg_comb_dir)
         else:
-            self._validate(self.params[index], curr_log_dir)
+            for i, seg_comb in enumerate(self.params):
+                seg_comb_dir = os.path.join(curr_log_dir, "seg/combination-" + str(i))
+                utils.log_params(seg_comb_dir, i, self.root_handler, self.params)
+                mapping.map_params(self.params[i])
+
+                self._validate(seg_comb, seg_comb_dir)
         # return history.history
 
     def _contrastive_train_loop(self, params, pipeline, curr_log_dir):
@@ -134,13 +140,13 @@ class Trainer:
 
 
 
-    def _seg_train_loop(self, params, pipeline, curr_log_dir):
+    def _seg_train_loop(self, params, pipeline, curr_log_dir, seg_comb_dir):
         for checkpoint in utils.get_checkpoints(os.path.join(curr_log_dir, 
                                                 "contrastive/checkpoints"), match='checkpoint'):
-            checkpoint_log_dir = os.path.join(curr_log_dir, 
-                                              'seg/contrastive_ckpt' +
+            checkpoint_log_dir = os.path.join(seg_comb_dir, 
+                                              'contrastive_ckpt' +
                                               checkpoint.split('_')[2]) 
-            os.makedirs(checkpoint_log_dir + '/checkpoints', exist_ok=True)
+            os.makedirs(os.path.join(checkpoint_log_dir, 'checkpoints'), exist_ok=True)
 
             curr_pipeline = pipeline(params, checkpoint_log_dir)
             seg_head = params['seg_head'](self.model, 
@@ -171,12 +177,11 @@ class Trainer:
 
     def _validate(self, params, curr_log_dir):
 
-        for contrastive_ckpt in utils.get_checkpoints(os.path.join(curr_log_dir, 
-                                                            "seg"), match='ckpt'):
+        for contrastive_ckpt in utils.get_checkpoints(curr_log_dir, match='ckpt'):
             for checkpoint in utils.get_checkpoints(os.path.join(curr_log_dir, 
-                                                    "seg", contrastive_ckpt, 'checkpoints'), match='checkpoint'):
+                                                    contrastive_ckpt, 'checkpoints'), match='checkpoint'):
                 checkpoint_log_dir = os.path.join(curr_log_dir, 
-                                                  'seg/contrastive_ckpt' +
+                                                  'contrastive_ckpt' +
                                                   contrastive_ckpt.split('ckpt')[1]) 
                 os.makedirs(checkpoint_log_dir + '/checkpoints', exist_ok=True)
                 os.makedirs(checkpoint_log_dir + '/samples', exist_ok=True)
