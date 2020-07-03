@@ -91,7 +91,7 @@ def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, chec
 
             # Save required number of samples
             if i < samples.shape[0]:
-                samples[i] = curr_segmentation
+                samples[i, threshold] = curr_segmentation
 
             print("Agglomeration: ", curr_segmentation.shape)
             # print(segmentation)
@@ -111,19 +111,8 @@ def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, chec
                         for metric, total in metrics_per_threshold.items()}
                         for threshold, metrics_per_threshold in metrics.items()}
     print("averaged_metrics: ", averaged_metrics)
-
-    for threshold in thresholds:
-        metrics_file = os.path.join(curr_log_dir, 'metrics_' + str(threshold) + '.csv')
-        if os.path.isfile(metrics_file):
-            prev_metrics = pd.read_csv(metrics_file, index_col=0)
-            print(prev_metrics.columns)
-            print("test: ", list(averaged_metrics[threshold].values()))
-            prev_metrics.loc[checkpoint] = list(averaged_metrics[threshold].values())
-            prev_metrics.to_csv(metrics_file) 
-            print('prev_metrics', prev_metrics)
-        else: 
-            temp = pd.DataFrame([averaged_metrics[threshold]], index=[checkpoint]).to_csv(
-                metrics_file) 
-            print("temp: ", temp)
+    os.makedirs(os.path.join(curr_log_dir, "metrics"), exist_ok=True)
+    metrics_file = os.path.join(curr_log_dir, "metrics", 'metrics_' + checkpoint + '.csv')
+    pd.DataFrame.from_dict(averaged_metrics, orient='index').to_csv(metrics_file)
     
     save_samples(pred_aff, pred_aff_ds, samples, labels, labels_dataset, thresholds, curr_log_dir, checkpoint)
