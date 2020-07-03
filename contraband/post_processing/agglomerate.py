@@ -4,6 +4,7 @@ import waterz
 from contraband.post_processing.watershed import watershed
 from contraband import utils
 import os
+import pandas
 
 scoring_functions = {
     'mean_aff':
@@ -123,6 +124,16 @@ def agglomerate(affs, thresholds, is_2d, curr_log_dir, curr_sample,
                                            curr_log_dir=curr_log_dir,
                                            curr_sample=curr_sample,
                                            max_samples=max_samples,
-                                           curr_ckpt=curr_ckpt)
+                                           curr_ckpt=curr_ckpt,
+                                           return_merge_history=False)
     print("Finished agglomeration in " + str(time.time() - start) + "s")
+    #segmentation = list(segmentation)
+    #if curr_sample < max_samples:
+    #    pandas.DataFrame(segmentation[0][1]).to_csv(os.path.join(curr_log_dir, "MH_0.5"))
+    #    pandas.DataFrame(segmentation[1][1]).to_csv(os.path.join(curr_log_dir, "MH_0.75"))
+    #    print("0.5: ", segmentation[0][1])
+    #    print("0.75: ", segmentation[1][1])
+    #segmentation = np.array([segmentation[0][0], segmentation[1][0]])
+    #print(segmentation.shape)
     return segmentation
+
