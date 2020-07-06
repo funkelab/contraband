@@ -3,6 +3,7 @@ import numpy as np
 from collections.abc import Iterable
 import skimage.filters as filters
 
+from gunpowder.profiling import Timing
 
 class SetDtype(gp.BatchFilter):
 
@@ -403,3 +404,43 @@ class AddChannelDim(gp.BatchFilter):
         if self.array not in batch:
             return
         batch[self.array].data = np.expand_dims(batch[self.array].data, self.axis)
+
+class RejectArray(gp.BatchFilter):
+
+    def __init__(self, ensure_nonempty):
+        self.ensure_nonempty = ensure_nonempty
+
+    def setup(self):
+        self.upstream_provider = self.get_upstream_provider()
+
+    def provide(self, request):
+
+        report_next_timeout = 10
+        num_rejected = 0
+
+        timing = Timing(self)
+        timing.start()
+
+        have_good_batch = False
+        while not have_good_batch:
+
+            batch = self.upstream_provider.request_batch(request)
+
+            if batch.arrays[self.ensure_nonempty].data.size != 0:
+                have_good_batch = True
+                print("Accepted batch with shape: ", batch.arrays[self.ensure_nonempty].data.shape)
+            else:
+                num_rejected += 1
+
+                if timing.elapsed() > report_next_timeout:
+
+                    print(
+                        "rejected %d batches, been waiting for a good one "
+                        "since %ds", num_rejected, report_next_timeout)
+                    report_next_timeout *= 2
+
+        timing.stop()
+        batch.profiling_stats.add(timing)
+
+        return batch
+

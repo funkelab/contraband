@@ -146,7 +146,9 @@ class Standard2DContrastive():
                 locations_0, locations_1) +
             gp.Reject(ensure_nonempty=points_0) + 
             gp.Reject(ensure_nonempty=points_1) + 
-            gp.PreCache() +
+            RejectArray(ensure_nonempty=locations_0) + 
+            RejectArray(ensure_nonempty=locations_1) + 
+            #gp.PreCache() +
             gp.torch.Train(
                 model, self.training_loss, optimizer,
                 inputs={
