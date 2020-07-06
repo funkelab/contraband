@@ -190,22 +190,20 @@ class RemoveSpatialDim(gp.BatchFilter):
 
 class AddRandomPoints(gp.BatchFilter):
 
-    def __init__(self, graph_key, for_array, density):
+    def __init__(self, graph_key, roi, density):
         self.graph_key = graph_key
-        self.array_key = for_array
-        self.n = density
+        self.roi = roi
+        self.density = density
+        self.volume = np.prod(roi.get_shape())
         self.seed = 0
 
     def setup(self):
-        self.graph_spec = gp.GraphSpec(roi=self.spec[self.array_key].roi)
+        self.graph_spec = gp.GraphSpec(roi=self.roi)
         self.provides(self.graph_key, self.graph_spec)
 
-    def prepare(self, request):
-        deps = gp.BatchRequest()
-        deps[self.array_key] = request[self.array_key]
-        return deps
-
     def process(self, batch, request):
+
+        ndims = self.roi.dims()
 
         # ensure that parallel calls to this node produce the same
         # pseudo-random output
@@ -213,9 +211,10 @@ class AddRandomPoints(gp.BatchFilter):
         np.random.seed(self.seed)
         self.seed += 1
 
-        # create random points in [0:1000,0:1000]
-        points = np.random.random((int(self.n*1000*1000), 3))*1000
-        points[:, 0] = request[self.graph_key].roi.get_begin()[0]
+        # create random points in the unit cube
+        points = np.random.random((int(self.density * self.volume), ndims))
+        points *= np.array(self.roi.get_end() - self.roi.get_begin())
+        points += self.roi.get_begin()
 
         # restore the RNG
         np.random.set_state(rand_state)
