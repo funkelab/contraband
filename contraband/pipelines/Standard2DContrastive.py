@@ -7,15 +7,16 @@ from contraband.pipelines.utils import (
     Blur, 
     InspectBatch,
     RemoveChannelDim,
-    AddRandomPoints,
+    RandomPointSource,
     PrepareBatch,
     AddSpatialDim,
     SetDtype,
     AddChannelDim,
-    RemoveSpatialDim)
+    RemoveSpatialDim,
+    RejectArray)
 from contraband.pipelines.contrastive_loss import contrastive_volume_loss
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 class Standard2DContrastive():
@@ -97,7 +98,9 @@ class Standard2DContrastive():
         context = (in_shape - out_shape) / 2 
         print(context)
 
-        sources = tuple(
+        point_source = RandomPointSource(points_0, points_1, density=0.001)
+
+        array_sources = tuple(
             gp.ZarrSource(
                 filename,
                 {
@@ -111,19 +114,29 @@ class Standard2DContrastive():
                         interpolatable=True)
                 }) +
             gp.Normalize(raw, self.params['norm_factor']) +
-            gp.Pad(raw, context) +
-            AddRandomPoints(points, for_array=raw, density=0.0005) 
+            gp.Pad(raw, None) 
+            # AddRandomPoints(points, for_array=raw, density=0.0005) 
 
-            for raw, points in zip([raw_0, raw_1], [points_0, points_1])
+            for raw in [raw_0, raw_1]
         )
+        sources = tuple(tuple((source, point_source)) for source in array_sources)
+        sources = tuple(
+            source + 
+            gp.MergeProvider()
+            for source in sources)
+
+#        for source in array_sources:
+#            with gp.build(source) as pipeline:
+#                print("Array source: ", pipeline.request_batch(request))
+
         sources = tuple(
             self._make_train_augmentation_pipeline(raw, source) 
-                for raw, source in zip([raw_0, raw_1], sources)
+            for raw, source in zip([raw_0, raw_1], sources)
         )
-
+        
         pipeline = (
             sources +
-            gp.MergeProvider() +
+            gp.MergeProvider("first") +
             gp.Crop(raw_0, raw_roi) +
             gp.Crop(raw_1, raw_roi) +
             gp.RandomLocation() +

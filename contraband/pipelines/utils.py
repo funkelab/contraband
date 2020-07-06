@@ -188,47 +188,89 @@ class RemoveSpatialDim(gp.BatchFilter):
     def __insert_dim(self, a, s, dim=0):
         return a[:dim] + (s,) + a[dim:]
 
-class AddRandomPoints(gp.BatchFilter):
+class RandomPointSource(gp.BatchProvider):
 
-    def __init__(self, graph_key, roi, density):
-        self.graph_key = graph_key
-        self.roi = roi
+    def __init__(self, graph1_key, graph2_key, density):
+        '''Add random points to two alternating requests of graph1 and graph2.
+
+        Usage:
+
+            point_source = AddRandomPoBatchProviderints(points1, points2, density=...)
+            pipeline = (
+                    point_source + [augmentaiton nodes],
+                    point_source + [augmentaiton nodes]) + \
+                MergeProvider() + \
+                RandomLocation()
+
+            with gp.build(pipeline):
+                pipeline.request_batchBatchProvider(...) # contains request for points1 and points2
+        '''
+
+        self.graph1_key = graph1_key
+        self.graph2_key = graph2_key
         self.density = density
-        self.volume = np.prod(roi.get_shape())
         self.seed = 0
+        self.for_graph1 = True
 
     def setup(self):
-        self.graph_spec = gp.GraphSpec(roi=self.roi)
-        self.provides(self.graph_key, self.graph_spec)
+        # provide points in an infinitBatchProvidere ROI
+        self.graph_spec = gp.GraphSpec(roi=gp.Roi(offset=(0, 0, 0), shape=(None, None, None)))
+        if self.for_graph1:
+            self.provides(self.graph1_key, self.graph_spec)
+            self.for_graph1 = False
+            print("Providing: ", self.graph1_key)
+        else:
+            self.provides(self.graph2_key, self.graph_spec)
+            self.for_graph1 = True
+            print("Providing: ", self.graph2_key)
 
-    def process(self, batch, request):
+    def provide(self, request):
 
-        ndims = self.roi.dims()
+        graph_key = self.graph1_key if self.for_graph1 else self.graph2_key
 
-        # ensure that parallel calls to this node produce the same
-        # pseudo-random output
-        rand_state = np.random.get_state()
-        np.random.seed(self.seed)
-        self.seed += 1
+        assert graph_key in request, "RandomPointSource was not called alternatingly"
 
-        # create random points in the unit cube
-        points = np.random.random((int(self.density * self.volume), ndims))
-        points *= np.array(self.roi.get_end() - self.roi.get_begin())
-        points += self.roi.get_begin()
+        roi = request[graph_key].roi
+        ndims = roi.dims()
+        volume = np.prod(roi.get_shape())
 
-        # restore the RNG
-        np.random.set_state(rand_state)
+        if self.for_graph1:
 
-        keep = {}
-        for i, point in enumerate(points):
-            if request[self.graph_key].roi.contains(point):
-                keep[i] = point
+            # ensure that parallel calls to this node produce the same
+            # pseudo-random output
+            rand_state = np.random.get_state()
+            np.random.seed(self.seed)
+            self.seed += 1
 
-        batch[self.graph_key] = gp.Graph(
+            # create random points in the unit cube and store them for graph2's
+            # request later
+            self.points = np.random.random((int(self.density * volume), ndims))
+            self.points *= np.array(roi.get_end() - roi.get_begin())
+            self.points += roi.get_begin()
+
+            # restore the RNG
+            np.random.set_state(rand_state)
+
+        if not self.for_graph1:
+
+            # following only needed for 2nd request
+            keep = {}
+            for i, point in enumerate(self.points):
+                if roi.contains(point):
+                    keep[i] = point
+        else:
+
+            keep = {i: point for i, point in enumerate(self.points)}
+
+        batch = gp.Batch()
+        batch[graph_key] = gp.Graph(
             [gp.Node(id=i, location=l) for i, l in keep.items()],
             [],
-            gp.GraphSpec(roi=request[self.graph_key].roi))
+            gp.GraphSpec(roi=roi))
 
+        self.for_graph1 = not self.for_graph1
+
+        return batch
 
 class PrepareBatch(gp.BatchFilter):
 
