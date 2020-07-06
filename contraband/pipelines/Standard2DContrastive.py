@@ -15,7 +15,7 @@ from contraband.pipelines.utils import (
     RemoveSpatialDim)
 from contraband.pipelines.contrastive_loss import contrastive_volume_loss
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 
 class Standard2DContrastive():
@@ -74,11 +74,16 @@ class Standard2DContrastive():
         locations_1 = gp.ArrayKey('LOCATIONS_1')
         emb_1 = gp.ArrayKey('EMBEDDING_1')
 
+        in_shape = gp.Coordinate((1, *model.in_shape))
+        out_shape = gp.Coordinate((1, *(model.out_shape)[2:]))
+        print("in_shape: ", in_shape)
+        print("out_shape: ", out_shape)
+
         request = gp.BatchRequest()
-        request.add(raw_0, (1, 260, 260))
-        request.add(raw_1, (1, 260, 260))
-        request.add(points_0, (1, 168, 168))
-        request.add(points_1, (1, 168, 168))
+        request.add(raw_0, in_shape)
+        request.add(raw_1, in_shape)
+        request.add(points_0, out_shape)
+        request.add(points_1, out_shape)
         request[locations_0] = gp.ArraySpec(nonspatial=True)
         request[locations_1] = gp.ArraySpec(nonspatial=True)
 
@@ -88,6 +93,9 @@ class Standard2DContrastive():
 
         source_shape = zarr.open(filename)[dataset].shape
         raw_roi = gp.Roi((0, 0, 0), source_shape)
+
+        context = (in_shape - out_shape) / 2 
+        print(context)
 
         sources = tuple(
             gp.ZarrSource(
@@ -103,7 +111,7 @@ class Standard2DContrastive():
                         interpolatable=True)
                 }) +
             gp.Normalize(raw, self.params['norm_factor']) +
-            gp.Pad(raw, (0, 200, 200)) +
+            gp.Pad(raw, context) +
             AddRandomPoints(points, for_array=raw, density=0.0005) 
 
             for raw, points in zip([raw_0, raw_1], [points_0, points_1])
@@ -117,6 +125,7 @@ class Standard2DContrastive():
             sources +
             gp.MergeProvider() +
             gp.Crop(raw_0, raw_roi) +
+            gp.Crop(raw_1, raw_roi) +
             gp.RandomLocation() +
             PrepareBatch(
                 raw_0, raw_1,
