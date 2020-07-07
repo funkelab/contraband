@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import zarr
 from contraband.pipelines.utils import Blur, InspectBatch, RemoveChannelDim, \
-    AddRandomPoints, PrepareBatch, AddSpatialDim, \
+    PrepareBatch, AddSpatialDim, \
     SetDtype, AddChannelDim, RemoveSpatialDim
 
 logging.basicConfig(level=logging.INFO)
