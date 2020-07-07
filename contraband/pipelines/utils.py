@@ -189,89 +189,128 @@ class RemoveSpatialDim(gp.BatchFilter):
     def __insert_dim(self, a, s, dim=0):
         return a[:dim] + (s,) + a[dim:]
 
-class RandomPointSource(gp.BatchProvider):
 
-    def __init__(self, graph1_key, graph2_key, density):
-        '''Add random points to two alternating requests of graph1 and graph2.
+class RandomPointGenerator:
 
-        Usage:
+    def __init__(self, density, repetitions=1):
+        '''Create random points in a provided ROI with the given density.
 
-            point_source = AddRandomPoBatchProviderints(points1, points2, density=...)
-            pipeline = (
-                    point_source + [augmentaiton nodes],
-                    point_source + [augmentaiton nodes]) + \
-                MergeProvider() + \
-                RandomLocation()
+        Args:
 
-            with gp.build(pipeline):
-                pipeline.request_batchBatchProvider(...) # contains request for points1 and points2
+            density (float):
+
+                The expected number of points per world unit cube. If, for
+                example, the ROI passed to `get_random_points(roi)` has a 2D
+                size of (10, 10) and the density is 1.0, 100 uniformly
+                distributed points will be returned.
+
+            repetitions (int):
+
+                Return the same list of points that many times. Note that in
+                general only the first call will contain uniformly distributed
+                points for the given ROI. Subsequent calls with a potentially
+                different ROI will only contain the points that lie within that
+                ROI.
+        '''
+        self.density = density
+        self.repetitions = repetitions
+        self.iteration = 0
+
+    def get_random_points(self, roi):
+        '''Get a dictionary mapping point IDs to nD locations, uniformly
+        distributed in the given ROI. If `repetitions` is larger than 1,
+        previously sampled points will be reused that many times.
         '''
 
-        self.graph1_key = graph1_key
-        self.graph2_key = graph2_key
-        self.density = density
-        self.seed = 0
-        self.for_graph1 = True
-
-    def setup(self):
-        # provide points in an infinitBatchProvidere ROI
-        self.graph_spec = gp.GraphSpec(roi=gp.Roi(offset=(0, 0, 0), shape=(None, None, None)))
-        if self.for_graph1:
-            self.provides(self.graph1_key, self.graph_spec)
-            self.for_graph1 = False
-            print("Providing: ", self.graph1_key)
-        else:
-            self.provides(self.graph2_key, self.graph_spec)
-            self.for_graph1 = True
-            print("Providing: ", self.graph2_key)
-
-    def provide(self, request):
-
-        graph_key = self.graph1_key if self.for_graph1 else self.graph2_key
-
-        assert graph_key in request, "RandomPointSource was not called alternatingly"
-
-        roi = request[graph_key].roi
         ndims = roi.dims()
         volume = np.prod(roi.get_shape())
 
-        if self.for_graph1:
+        if self.iteration % self.repetitions == 0:
 
-            # ensure that parallel calls to this node produce the same
-            # pseudo-random output
-            rand_state = np.random.get_state()
-            np.random.seed(self.seed)
-            self.seed += 1
-
-            # create random points in the unit cube and store them for graph2's
-            # request later
+            # create random points in the unit cube
             self.points = np.random.random((int(self.density * volume), ndims))
+            # scale and shift into requested ROI
             self.points *= np.array(roi.get_end() - roi.get_begin())
             self.points += roi.get_begin()
 
-            # restore the RNG
-            np.random.set_state(rand_state)
+            ret = {i: point for i, point in enumerate(self.points)}
 
-        if not self.for_graph1:
-
-            # following only needed for 2nd request
-            keep = {}
-            for i, point in enumerate(self.points):
-                if roi.contains(point):
-                    keep[i] = point
         else:
 
-            keep = {i: point for i, point in enumerate(self.points)}
+            ret = {}
+            for i, point in enumerate(self.points):
+                if roi.contains(point):
+                    ret[i] = point
+
+        self.iteration += 1
+        return ret
+
+
+class RandomPointSource(gp.BatchProvider):
+
+    def __init__(
+            self,
+            graph_key,
+            density=None,
+            random_point_generator=None):
+        '''A source creating uniformly distributed points.
+
+        Args:
+
+            graph_key (:class:`GraphKey`):
+
+                The graph key to provide.
+
+            density (float, optional):
+
+                The expected number of points per world unit cube. If, for
+                example, the ROI passed to `get_random_points(roi)` has a 2D
+                size of (10, 10) and the density is 1.0, 100 uniformly
+                distributed points will be returned.
+
+                Only used if `random_point_generator` is `None`.
+
+            random_point_generator (:class:`RandomPointGenerator`, optional):
+
+                The random point generator to use to create points.
+
+                One of `density` or `random_point_generator` has to be given.
+        '''
+
+        assert (density is not None) != (random_point_generator is not None), \
+            "Exactly one of 'density' or 'random_point_generator' has to be " \
+            "given"
+
+        self.graph_key = graph_key
+        if density is not None:
+            self.random_point_generator = RandomPointGenerator(density=density)
+        else:
+            self.random_point_generator = random_point_generator
+
+    def setup(self):
+
+        # provide points in an infinite ROI
+        self.graph_spec = gp.GraphSpec(
+            roi=gp.Roi(
+                offset=(0, 0, 0),
+                shape=(None, None, None)))
+
+        self.provides(self.graph_key, self.graph_spec)
+
+    def provide(self, request):
+
+        roi = request[self.graph_key].roi
+
+        random_points = self.random_point_generator.get_random_points(roi)
 
         batch = gp.Batch()
-        batch[graph_key] = gp.Graph(
-            [gp.Node(id=i, location=l) for i, l in keep.items()],
+        batch[self.graph_key] = gp.Graph(
+            [gp.Node(id=i, location=l) for i, l in random_points.items()],
             [],
             gp.GraphSpec(roi=roi))
 
-        self.for_graph1 = not self.for_graph1
-
         return batch
+
 
 class PrepareBatch(gp.BatchFilter):
 
