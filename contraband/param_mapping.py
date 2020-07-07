@@ -3,6 +3,7 @@ from contraband.pipelines.Standard2DContrastive import Standard2DContrastive
 from contraband.pipelines.Standard2DSeg import Standard2DSeg
 from contraband.segmentation_heads.SimpleSegHead import SimpleSegHead
 from itertools import product
+import math
 
 
 def generate_param_grid(params):
@@ -29,6 +30,12 @@ def map_params(params):
     if 'seg_head' in params:
         if params['seg_head'] == 'SimpleSegHead':
             params['seg_head'] = SimpleSegHead
+
+    if 'elastic_params' in params and "rotation_interval" in params['elastic_params']:
+        for i, dim in enumerate(params['elastic_params']["rotation_interval"]):
+            if isinstance(dim, str) and "pi" in dim:
+                params['elastic_params']["rotation_interval"][i] = \
+                    eval(dim.replace("pi", "math.pi"))
 
 
 def map_pipeline(mode, pipeline):
