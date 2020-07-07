@@ -10,7 +10,6 @@ import contraband.utils as utils
 from contraband.pipelines.prediction import Predict
 import numpy as np
 
-
 class Trainer:
     def __init__(self, model, expirement_num, mode):
 
@@ -51,29 +50,29 @@ class Trainer:
             raise ValueError('Incorrect mode specified' + str(mode))
         self.mode = mode
 
-    def train(self):
+
+    def train(self, index):
 
         # parameters = pd.DataFrame(self.params)
         # parameters["val_accuracy"] = np.nan
         # parameters["val_loss"] = np.nan
 
-        for index in range(self.contrastive_combs):
-            curr_log_dir = os.path.join(self.logdir,
-                                        "combination-" + str(index))
-            os.makedirs(curr_log_dir, exist_ok=True)
-            assert os.path.isdir(curr_log_dir), \
-                os.path.join("Dir ", curr_log_dir, "doesn't exist")
+        curr_log_dir = os.path.join(self.logdir,
+                                    "combination-" + str(index))
+        os.makedirs(curr_log_dir, exist_ok=True)
+        assert os.path.isdir(curr_log_dir), \
+            os.path.join("Dir ", curr_log_dir, "doesn't exist")
 
-            os.makedirs(curr_log_dir + '/contrastive/checkpoints',
-                        exist_ok=True)
-            os.makedirs(os.path.join(curr_log_dir, 'seg'), exist_ok=True) 
+        os.makedirs(curr_log_dir + '/contrastive/checkpoints',
+                    exist_ok=True)
+        os.makedirs(os.path.join(curr_log_dir, 'seg'), exist_ok=True) 
 
-            assert os.path.isdir(curr_log_dir + '/contrastive/checkpoints'), \
-                "Dir " + curr_log_dir + "doesn't exist"
-            assert os.path.isdir(curr_log_dir + '/seg'), \
-                "Dir " + curr_log_dir + "doesn't exist"
+        assert os.path.isdir(curr_log_dir + '/contrastive/checkpoints'), \
+            "Dir " + curr_log_dir + "doesn't exist"
+        assert os.path.isdir(curr_log_dir + '/seg'), \
+            "Dir " + curr_log_dir + "doesn't exist"
 
-            self.train_one(index)
+        self.train_one(index)
 
             # parameters.loc[index, 'val_loss'] = history['val_loss'][0]
             # parameters.loc[index, 'val_accuracy'] = history['val_accuracy'][0]
