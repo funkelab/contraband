@@ -13,7 +13,8 @@ from contraband.pipelines.utils import (
     SetDtype,
     AddChannelDim,
     RemoveSpatialDim,
-    RejectArray)
+    RejectArray,
+    RandomPointGenerator)
 from contraband.pipelines.contrastive_loss import contrastive_volume_loss
 
 logging.basicConfig(level=logging.INFO)
@@ -55,7 +56,7 @@ class Standard2DContrastive():
                 transpose_only=(1, 2)) 
 
         if 'noise' in self.params and self.params['noise']:
-            source = source + gp.NoiseAugment(raw, var=0.01)
+            source = source + gp.NoiseAugment(raw, var=0.00000000001)
         return source
 
     def create_train_pipeline(self, model):
@@ -95,10 +96,7 @@ class Standard2DContrastive():
         source_shape = zarr.open(filename)[dataset].shape
         raw_roi = gp.Roi((0, 0, 0), source_shape)
 
-        context = (in_shape - out_shape) / 2 
-        print(context)
-
-        point_source = RandomPointSource(points_0, points_1, density=0.001)
+        random_point_generator = RandomPointGenerator(density=0.001, repetitions=2)
 
         array_sources = tuple(
             gp.ZarrSource(
@@ -119,15 +117,21 @@ class Standard2DContrastive():
 
             for raw in [raw_0, raw_1]
         )
-        sources = tuple(tuple((source, point_source)) for source in array_sources)
+
+        point_sources = tuple((
+            RandomPointSource(
+                points_0,
+                random_point_generator=random_point_generator),
+            RandomPointSource(
+                points_1,
+                random_point_generator=random_point_generator)
+            ))
+
+        sources = tuple(tuple((raw, points)) for raw, points in zip(array_sources, point_sources))
         sources = tuple(
             source + 
             gp.MergeProvider()
             for source in sources)
-
-#        for source in array_sources:
-#            with gp.build(source) as pipeline:
-#                print("Array source: ", pipeline.request_batch(request))
 
         sources = tuple(
             self._make_train_augmentation_pipeline(raw, source) 
@@ -136,7 +140,7 @@ class Standard2DContrastive():
         
         pipeline = (
             sources +
-            gp.MergeProvider("first") +
+            gp.MergeProvider() +
             gp.Crop(raw_0, raw_roi) +
             gp.Crop(raw_1, raw_roi) +
             gp.RandomLocation() +
@@ -144,11 +148,9 @@ class Standard2DContrastive():
                 raw_0, raw_1,
                 points_0, points_1,
                 locations_0, locations_1) +
-            gp.Reject(ensure_nonempty=points_0) + 
-            gp.Reject(ensure_nonempty=points_1) + 
             RejectArray(ensure_nonempty=locations_0) + 
             RejectArray(ensure_nonempty=locations_1) + 
-            #gp.PreCache() +
+            gp.PreCache() +
             gp.torch.Train(
                 model, self.training_loss, optimizer,
                 inputs={
