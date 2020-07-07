@@ -42,21 +42,21 @@ class Standard2DContrastive():
 
     def _make_train_augmentation_pipeline(self, raw, source):
         if 'elastic' in self.params and self.params['elastic']:
-            source = source + gp.ElasticAugment(
-                control_point_spacing=(1, 10, 10),
-                jitter_sigma=(0, 0.1, 0.1),
-                rotation_interval=(0, math.pi / 2))
+            source = source + gp.ElasticAugment(**self.params["elastic_params"])
+            #source = source + gp.ElasticAugment(
+            #    control_point_spacing=(1, 10, 10),
+            #    jitter_sigma=(0, 0.1, 0.1),
+            #    rotation_interval=(0, math.pi / 2))
 
         if 'blur' in self.params and self.params['blur']:
-            source = source + Blur(raw, sigma=[0, 1, 1])
+            source = source + Blur(raw, **self.params["blur_params"])
 
         if 'simple' in self.params and self.params['simple']:
             source = source + gp.SimpleAugment(
-                mirror_only=(1, 2),
-                transpose_only=(1, 2)) 
+                **self.params["simple_params"]) 
 
         if 'noise' in self.params and self.params['noise']:
-            source = source + gp.NoiseAugment(raw, var=0.00000000001)
+            source = source + gp.NoiseAugment(raw, **self.params['noise_params'])
         return source
 
     def create_train_pipeline(self, model):
@@ -96,7 +96,8 @@ class Standard2DContrastive():
         source_shape = zarr.open(filename)[dataset].shape
         raw_roi = gp.Roi((0, 0, 0), source_shape)
 
-        random_point_generator = RandomPointGenerator(density=0.001, repetitions=2)
+        random_point_generator = RandomPointGenerator(
+            density=self.params['point_density'], repetitions=2)
 
         array_sources = tuple(
             gp.ZarrSource(
