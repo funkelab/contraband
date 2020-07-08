@@ -18,6 +18,7 @@ from contraband.pipelines.utils import (
 from contraband.pipelines.contrastive_loss import contrastive_volume_loss
 
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("gunpowder.nodes.elastic_augment").setLevel(logging.INFO)
 
 
 class Standard2DContrastive():
@@ -43,10 +44,6 @@ class Standard2DContrastive():
     def _make_train_augmentation_pipeline(self, raw, source):
         if 'elastic' in self.params and self.params['elastic']:
             source = source + gp.ElasticAugment(**self.params["elastic_params"])
-            #source = source + gp.ElasticAugment(
-            #    control_point_spacing=(1, 10, 10),
-            #    jitter_sigma=(0, 0.1, 0.1),
-            #    rotation_interval=(0, math.pi / 2))
 
         if 'blur' in self.params and self.params['blur']:
             source = source + Blur(raw, **self.params["blur_params"])
@@ -190,8 +187,8 @@ class Standard2DContrastive():
                 dataset_names={
                     raw_0: 'raw_0',
                     raw_1: 'raw_1',
-                    points_0: 'points_0',
-                    points_1: 'points_1',
+                    locations_0: 'locations_0',
+                    locations_1: 'locations_1',
                     emb_0: 'emb_0',
                     emb_1: 'emb_1'
                 },
