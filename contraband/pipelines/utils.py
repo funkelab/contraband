@@ -467,7 +467,7 @@ class RejectArray(gp.BatchFilter):
 
             if batch.arrays[self.ensure_nonempty].data.size != 0:
                 have_good_batch = True
-                print("Accepted batch with shape: ", batch.arrays[self.ensure_nonempty].data.shape)
+                # print("Accepted batch with shape: ", batch.arrays[self.ensure_nonempty].data.shape)
             else:
                 num_rejected += 1
 
