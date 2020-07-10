@@ -56,12 +56,12 @@ def contrastive_volume_loss(emb_0, emb_1, locations_0, locations_1, t):
     ind_kernel = torch.Tensor([
         np.prod(volume_shape[i + 1:])
         for i in range(d)
-    ]).float().to(locations_0.device)
+    ]).long().to(locations_0.device)
 
     # turn point coordinates into indices
     # (n,) (TODO: concatenate batches here, do the same for embeddings)
-    ind_0 = torch.matmul(locations_0, ind_kernel).long().squeeze(dim=0)
-    ind_1 = torch.matmul(locations_1, ind_kernel).long().squeeze(dim=0)
+    ind_0 = torch.matmul(locations_0.long(), ind_kernel).squeeze(dim=0)
+    ind_1 = torch.matmul(locations_1.long(), ind_kernel).squeeze(dim=0)
 
     # get embeddings for each point
     # (b, n, c)
