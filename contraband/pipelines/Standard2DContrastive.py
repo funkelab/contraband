@@ -194,7 +194,7 @@ class Standard2DContrastive():
                 },
                 additional_request=snapshot_request,
                 every=self.params['save_every']) +
-            gp.PrintProfilingStats(every=10)
+            gp.PrintProfilingStats(every=500)
         )
 
         return pipeline, request
