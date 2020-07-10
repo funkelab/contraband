@@ -14,9 +14,11 @@ class Unet2D(torch.nn.Module):
         self.pipeline = "Standard2D"
         self.in_shape = (260, 260)
 
+    def make_model(self, h_channels):
+
         self.unet = funlib.learn.torch.models.UNet(
             in_channels=1,
-            num_fmaps=12,
+            num_fmaps=h_channels,
             fmap_inc_factors=6,
             downsample_factors=[(2, 2), (2, 2), (2, 2)],
             kernel_size_down=[[(3, 3), (3, 3)]] * 4,

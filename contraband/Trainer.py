@@ -40,22 +40,12 @@ class Trainer:
         self.contrastive_combs = len(mapping.generate_param_grid(self.params['contrastive']))
 
         print(self.params)
-        if mode == 'contrastive':
-            self.params = mapping.generate_param_grid(self.params['contrastive'])
-        elif mode == 'seg':
-            self.params = mapping.generate_param_grid(self.params['seg'])
-        elif mode == 'val':
-            self.params = mapping.generate_param_grid(self.params['seg'])
-        else:
-            raise ValueError('Incorrect mode specified' + str(mode))
+        self.contrastive_params = mapping.generate_param_grid(self.params['contrastive'])
+        self.seg_params = mapping.generate_param_grid(self.params['seg'])
+
         self.mode = mode
 
-
     def train(self, index):
-
-        # parameters = pd.DataFrame(self.params)
-        # parameters["val_accuracy"] = np.nan
-        # parameters["val_loss"] = np.nan
 
         curr_log_dir = os.path.join(self.logdir,
                                     "combination-" + str(index))
@@ -74,15 +64,6 @@ class Trainer:
 
         self.train_one(index)
 
-            # parameters.loc[index, 'val_loss'] = history['val_loss'][0]
-            # parameters.loc[index, 'val_accuracy'] = history['val_accuracy'][0]
-            # parameters.iloc[index].to_json(curr_log_dir + '/params.json')
-
-            # logger.info("Val loss: " + str(history['val_loss'][0]))
-            # logger.info("Val accuracy: " + str(history['val_accuracy'][0]))
-
-        # parameters.to_csv(self.logdir + "/hyperparameter_matrix.csv")
-
     def train_one(self, index):
 
         curr_log_dir = os.path.join(self.logdir, "combination-" + str(index))
@@ -90,33 +71,34 @@ class Trainer:
         pipeline = mapping.map_pipeline(self.mode, self.model.pipeline)
 
         if self.mode == 'contrastive':
-            utils.log_params(curr_log_dir, index, self.root_handler, self.params)
-            mapping.map_params(self.params[index])
-            self._contrastive_train_loop(self.params[index], pipeline, curr_log_dir)
+            utils.log_params(curr_log_dir, index, self.root_handler, self.contrastive_params)
+            mapping.map_params(self.contrastive_params[index])
+            self._contrastive_train_loop(self.contrastive_params[index], pipeline, curr_log_dir)
         elif self.mode == 'seg':
-            for i, seg_comb in enumerate(self.params):
-                mapping.map_params(self.params[i])
+            for i, seg_comb in enumerate(self.seg_params):
+                mapping.map_params(self.seg_params[i])
                 seg_comb_dir = os.path.join(curr_log_dir, "seg/combination-" + str(i))
                 os.makedirs(seg_comb_dir, exist_ok=True)
 
-                utils.log_params(seg_comb_dir, i, self.root_handler, self.params)
+                utils.log_params(seg_comb_dir, i, self.root_handler, self.seg_params)
 
-                self._seg_train_loop(seg_comb, pipeline, curr_log_dir, seg_comb_dir)
+                self._seg_train_loop(seg_comb, pipeline, curr_log_dir, seg_comb_dir, index)
         else:
-            for i, seg_comb in enumerate(self.params):
+            for i, seg_comb in enumerate(self.seg_params):
                 seg_comb_dir = os.path.join(curr_log_dir, "seg/combination-" + str(i))
-                utils.log_params(seg_comb_dir, i, self.root_handler, self.params)
-                mapping.map_params(self.params[i])
+                utils.log_params(seg_comb_dir, i, self.root_handler, self.seg_params)
+                mapping.map_params(self.seg_params[i])
 
-                self._validate(seg_comb, seg_comb_dir)
+                self._validate(seg_comb, seg_comb_dir, index)
         # return history.history
 
     def _contrastive_train_loop(self, params, pipeline, curr_log_dir):
         pipeline = pipeline(params, curr_log_dir)
 
+        self.model.make_model(params['h_channels'])
         volume_net = ContrastiveVolumeNet(self.model,
                                           params['h_channels'],
-                                          params['out_channels'])
+                                          params['h_channels']) # output channels are the same as h_channels
 
         print("Model's state_dict:")
         for param_tensor in volume_net.state_dict():
@@ -139,7 +121,7 @@ class Trainer:
 
 
 
-    def _seg_train_loop(self, params, pipeline, curr_log_dir, seg_comb_dir):
+    def _seg_train_loop(self, params, pipeline, curr_log_dir, seg_comb_dir, contrastive_index):
         for checkpoint in utils.get_checkpoints(os.path.join(curr_log_dir, 
                                                 "contrastive/checkpoints"), match='checkpoint'):
             checkpoint_log_dir = os.path.join(seg_comb_dir, 
@@ -148,9 +130,11 @@ class Trainer:
             os.makedirs(os.path.join(checkpoint_log_dir, 'checkpoints'), exist_ok=True)
 
             curr_pipeline = pipeline(params, checkpoint_log_dir)
+            self.model.make_model(self.contrastive_params[contrastive_index]['h_channels'])
             seg_head = params['seg_head'](self.model, 
-                                          params['h_channels'],
+                                          self.contrastive_params[contrastive_index]['h_channels'],
                                           params['out_channels'])
+
             volume_net = SegmentationVolumeNet(self.model, seg_head)
             volume_net.load(os.path.join(curr_log_dir, 'contrastive/checkpoints', checkpoint))
 
@@ -174,7 +158,7 @@ class Trainer:
                         curr_loss = []
 
 
-    def _validate(self, params, curr_log_dir):
+    def _validate(self, params, curr_log_dir, contrastive_index):
 
         for contrastive_ckpt in utils.get_checkpoints(curr_log_dir, match='ckpt'):
             for checkpoint in utils.get_checkpoints(os.path.join(curr_log_dir, 
@@ -185,9 +169,12 @@ class Trainer:
                 os.makedirs(checkpoint_log_dir + '/checkpoints', exist_ok=True)
                 os.makedirs(checkpoint_log_dir + '/samples', exist_ok=True)
 
+                self.model.make_model(self.contrastive_params[contrastive_index]['h_channels'])
                 seg_head = params['seg_head'](self.model, 
-                                              params['h_channels'],
+                                              self.contrastive_params[contrastive_index]['h_channels'],
                                               params['out_channels'])
+
+                self.model.make_model(self.contrastive_params[contrastive_index]['h_channels'])
                 volume_net = SegmentationVolumeNet(self.model, seg_head)
                 volume_net.load(os.path.join(checkpoint_log_dir, 'checkpoints', checkpoint))
 
