@@ -4,8 +4,7 @@
       "dataset": ["train/raw"],
       "optimizer": ["adam"],
       "lr": [1e-5],
-      "epochs": [3],
-      "num_iterations": [2],
+      "num_iterations": [150000],
       "elastic": [true],
       "elastic_params": [{
 	"control_point_spacing": [1, 10, 10],
@@ -24,12 +23,11 @@
       "simple": [true],
       "noise": [true],
       "norm_factor": [0.25],
-      "save_every": [21],
+      "save_every": [50000],
 
       "point_density": [0.01, 0.1],
 
-      "h_channels": [20],
-      "out_channels": [3, 6, 9]
+      "h_channels": [6, 12]
   },
   "seg": {
       "data_file": ["data/ctc/Fluo-N2DH-SIM+.zarr"],
@@ -52,7 +50,6 @@
       "norm_factor": [0.25],
       "save_every": [3],
 
-      "h_channels": [20],
       "out_channels": [2]
   }
 }
