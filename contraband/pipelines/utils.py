@@ -5,6 +5,9 @@ import skimage.filters as filters
 
 from gunpowder.profiling import Timing
 
+import logging
+logger = logging.getLogger(__name__)
+
 class SetDtype(gp.BatchFilter):
 
     def __init__(self, array, dtype):
@@ -467,15 +470,15 @@ class RejectArray(gp.BatchFilter):
 
             if batch.arrays[self.ensure_nonempty].data.size != 0:
                 have_good_batch = True
-                # print("Accepted batch with shape: ", batch.arrays[self.ensure_nonempty].data.shape)
+                logger.debug(f"Accepted batch with shape: {batch.arrays[self.ensure_nonempty].data.shape}")
             else:
                 num_rejected += 1
 
                 if timing.elapsed() > report_next_timeout:
 
-                    print(
-                        "rejected %d batches, been waiting for a good one "
-                        "since %ds", num_rejected, report_next_timeout)
+                    logger.debug(
+                        f"rejected {report_next_timeout} batches, been waiting for a good one "
+                        "since {report_next_timeout}")
                     report_next_timeout *= 2
 
         timing.stop()
