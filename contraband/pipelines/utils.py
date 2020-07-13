@@ -321,13 +321,15 @@ class PrepareBatch(gp.BatchFilter):
             self,
             raw_0, raw_1,
             points_0, points_1,
-            locations_0, locations_1):
+            locations_0, locations_1,
+            is_2d):
         self.raw_0 = raw_0
         self.raw_1 = raw_1
         self.points_0 = points_0
         self.points_1 = points_1
         self.locations_0 = locations_0
         self.locations_1 = locations_1
+        self.is_2d = is_2d
 
     def setup(self):
         self.provides(
@@ -364,15 +366,20 @@ class PrepareBatch(gp.BatchFilter):
             location_1 /= voxel_size
             locations_0.append(location_0)
             locations_1.append(location_1)
+        
+        locations_0 = np.array(locations_0, dtype=np.float32)
+        locations_1 = np.array(locations_1, dtype=np.float32)
+        if self.is_2d:
+            locations_0 = locations_0[:, 1:]
+            locations_1 = locations_1[:, 1:]
+
         print(np.array(locations_0).shape)
 
         # create point location arrays (with batch dimension)
         batch[self.locations_0] = gp.Array(
-            np.array([locations_0], dtype=np.float32),
-            self.spec[self.locations_0])
+            locations_0, self.spec[self.locations_0])
         batch[self.locations_1] = gp.Array(
-            np.array([locations_1], dtype=np.float32),
-            self.spec[self.locations_1])
+            locations_1, self.spec[self.locations_1])
 
         # add batch dimension to raw
         batch[self.raw_0].data = batch[self.raw_0].data[np.newaxis, :]
