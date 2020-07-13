@@ -1,24 +1,21 @@
 import gunpowder as gp
 import logging
+import math
 import torch
-import zarr
+import daisy
 from contraband.pipelines.utils import (
     Blur, 
     InspectBatch,
     RemoveChannelDim,
-    RandomPointSource,
+    AddRandomPoints,
     PrepareBatch,
     AddSpatialDim,
     SetDtype,
     AddChannelDim,
-    RemoveSpatialDim,
-    RejectArray,
-    RandomPointGenerator)
+    RemoveSpatialDim)
 from contraband.pipelines.contrastive_loss import contrastive_volume_loss
-import daisy
 
 logging.basicConfig(level=logging.INFO)
-logging.getLogger("gunpowder.nodes.elastic_augment").setLevel(logging.INFO)
 
 
 class Standard2DContrastive():
@@ -43,23 +40,28 @@ class Standard2DContrastive():
 
     def _make_train_augmentation_pipeline(self, raw, source):
         if 'elastic' in self.params and self.params['elastic']:
-            source = source + gp.ElasticAugment(**self.params["elastic_params"])
+            print('elastic: ', self.params['elastic'])
+            source = source + gp.ElasticAugment(
+                control_point_spacing=(1, 10, 10),
+                jitter_sigma=(0, 0.1, 0.1),
+                rotation_interval=(0, math.pi / 2))
 
         if 'blur' in self.params and self.params['blur']:
-            source = source + Blur(raw, **self.params["blur_params"])
+            source = source + Blur(raw, sigma=[0, 1, 1])
 
         if 'simple' in self.params and self.params['simple']:
             source = source + gp.SimpleAugment(
-                **self.params["simple_params"]) 
+                mirror_only=(1, 2),
+                transpose_only=(1, 2)) 
 
         if 'noise' in self.params and self.params['noise']:
-            source = source + gp.NoiseAugment(raw, **self.params['noise_params'])
+            source = source + gp.NoiseAugment(raw, var=0.01)
         return source
 
     def create_train_pipeline(self, model):
 
         optimizer = self.params['optimizer'](model.parameters(), 
-                                                   **self.params['optimizer_kwargs'])
+                                             **self.params['optimizer_kwargs'])
 
         filename = self.params['data_file']
         dataset = self.params['dataset']
@@ -73,26 +75,35 @@ class Standard2DContrastive():
         locations_1 = gp.ArrayKey('LOCATIONS_1')
         emb_1 = gp.ArrayKey('EMBEDDING_1')
 
-        # source_shape = zarr.open(filename)[dataset].shape
-        # source_roi = gp.Roi((0, 0, 0), source_shape)
-
         data = daisy.open_ds(filename, dataset)
-        source_shape = gp.Roi((0, 0, 0), tuple(data.shape))
+        source_shape = gp.Roi((0,0,0), tuple(data.shape))
         source_roi = gp.Roi(data.roi.get_offset(), data.roi.get_shape())
         voxel_size = gp.Coordinate(data.voxel_size)
-        
-        # Get in and out shape
+
         in_shape = gp.Coordinate(model.in_shape)
-        out_shape = gp.Coordinate(model.out_shape[2:])
-        print("in_shape: ", in_shape)
-        print("out_shape: ", out_shape)
+        out_shape = gp.Coordinate((model.out_shape)[2:])
 
         in_shape = in_shape * voxel_size
         out_shape = out_shape * voxel_size
 
-        # Add batch shape
-        # in_shape = gp.Coordinate((1, *in_shape))
-        # out_shape = gp.Coordinate((1, *out_shape))
+        is_2d = source_roi.dims() == 2
+        if is_2d:
+            source_roi = gp.Roi((0, *source_roi.get_offset()),
+                                (1, *source_roi.get_shape()))
+            voxel_size = gp.Coordinate((1, *voxel_size))
+            in_shape = gp.Coordinate((1, *in_shape))
+            out_shape = gp.Coordinate((1, *out_shape))
+
+
+        context = (in_shape - out_shape) / 2
+
+        print("sources_shape: ", source_shape)
+        print("voxel_size: ", voxel_size)
+        print("source_roi: ", source_roi)
+        print("in_shape: ", in_shape)
+        print("out_shape: ", out_shape)
+        print("context: ", context)
+
 
         request = gp.BatchRequest()
         request.add(raw_0, in_shape)
@@ -104,12 +115,9 @@ class Standard2DContrastive():
 
         snapshot_request = gp.BatchRequest()
         snapshot_request[emb_0] = gp.ArraySpec(roi=request[points_0].roi)
-        snapshot_request[emb_1] = gp.ArraySpec(roi=request[points_1].roi)
+        snapshot_request[emb_1] = gp.ArraySpec(roi=request[points_1].roi)  
 
-        random_point_generator = RandomPointGenerator(
-            density=self.params['point_density'], repetitions=2)
-
-        array_sources = tuple(
+        sources = tuple(
             gp.ZarrSource(
                 filename,
                 {
@@ -118,52 +126,42 @@ class Standard2DContrastive():
                 # fake 3D data
                 array_specs={
                     raw: gp.ArraySpec(
-                        roi=source_roi,
+                        roi=source_shape,
                         voxel_size=voxel_size,
                         interpolatable=True)
                 }) +
-            gp.Normalize(raw, self.params['norm_factor']) +
-            gp.Pad(raw, None) 
+            InspectBatch("Source: ") +
+            gp.Normalize(raw, factor=self.params['norm_factor']) +
+            gp.Pad(raw, context) +
+            AddRandomPoints(points, for_array=raw, source_shape=source_shape.get_shape(), 
+                            context=context, voxel_size=voxel_size, 
+                            density=0.0005) 
 
-            for raw in [raw_0, raw_1]
+            for raw, points in zip([raw_0, raw_1], [points_0, points_1])
         )
-
-        point_sources = tuple((
-            RandomPointSource(
-                points_0,
-                random_point_generator=random_point_generator),
-            RandomPointSource(
-                points_1,
-                random_point_generator=random_point_generator)
-        ))
-
-        sources = tuple(tuple((raw, points)) for raw, points 
-                        in zip(array_sources, point_sources))
-        sources = tuple(
-            source + 
-            gp.MergeProvider()
-            for source in sources)
-
         sources = tuple(
             self._make_train_augmentation_pipeline(raw, source) 
             for raw, source in zip([raw_0, raw_1], sources)
         )
-        
+        if is_2d:
+            #source_roi = source_roi[1:]
+            voxel_size = voxel_size[1:]
+
         pipeline = (
             sources +
             gp.MergeProvider() +
-            gp.Crop(raw_0, source_roi) +
-            gp.Crop(raw_1, source_roi) +
+            #gp.Crop(raw_0, source_shape) + 
+            #gp.Crop(raw_0, source_shape) + 
             gp.RandomLocation() +
+            #InspectBatch("Before preaprebatch: ") + 
             PrepareBatch(
                 raw_0, raw_1,
                 points_0, points_1,
                 locations_0, locations_1) +
-            RejectArray(ensure_nonempty=locations_0) + 
-            RejectArray(ensure_nonempty=locations_1) + 
-            AddChannelDim(raw_0) + 
-            AddChannelDim(raw_1) + 
-            # gp.PreCache() +
+            #InspectBatch("Before reject: ") + 
+            gp.Reject(ensure_nonempty=points_0) + 
+            gp.Reject(ensure_nonempty=points_1) + 
+            #gp.PreCache() +
             gp.torch.Train(
                 model, self.training_loss, optimizer,
                 inputs={
@@ -189,8 +187,8 @@ class Standard2DContrastive():
                 log_dir=self.logdir + "/contrastive",
                 log_every=self.log_every) +
             # everything is 3D, except emb_0 and emb_1
-            # AddSpatialDim(emb_0) +
-            # AddSpatialDim(emb_1) +
+            AddSpatialDim(emb_0) +
+            AddSpatialDim(emb_1) +
             # now everything is 3D
             RemoveChannelDim(raw_0) +
             RemoveChannelDim(raw_1) +
@@ -202,14 +200,14 @@ class Standard2DContrastive():
                 dataset_names={
                     raw_0: 'raw_0',
                     raw_1: 'raw_1',
-                    locations_0: 'locations_0',
-                    locations_1: 'locations_1',
+                    points_0: 'points_0',
+                    points_1: 'points_1',
                     emb_0: 'emb_0',
                     emb_1: 'emb_1'
                 },
                 additional_request=snapshot_request,
                 every=self.params['save_every']) +
-            gp.PrintProfilingStats(every=500)
+            gp.PrintProfilingStats(every=10)
         )
 
         return pipeline, request

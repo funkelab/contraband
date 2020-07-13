@@ -69,7 +69,7 @@ class Blur(gp.BatchFilter):
                    + str(len(self.sigma)) + ") is not equal to the ROI dims (" 
                    + str(spec.roi.dims()) + ")")
         else:
-            self.filter_radius = [self.filter_radius 
+            self.filter_radius = [self.filter_radius * spec.voxel_size[dim]
                                   for dim in range(spec.roi.dims())]
 
         self.grow_amount = gp.Coordinate([radius
@@ -78,7 +78,7 @@ class Blur(gp.BatchFilter):
         grown_roi = spec.roi.grow(
             self.grow_amount,
             self.grow_amount)
-        grown_roi.snap_to_grid(self.spec[self.array].voxel_size)
+        grown_roi = grown_roi.snap_to_grid(self.spec[self.array].voxel_size)
 
         spec.roi = grown_roi
         deps[self.array] = spec
@@ -362,8 +362,9 @@ class PrepareBatch(gp.BatchFilter):
             location_1 -= points_roi.get_begin()
             location_0 /= voxel_size
             location_1 /= voxel_size
-            locations_0.append(location_0[1:])
-            locations_1.append(location_1[1:])
+            locations_0.append(location_0)
+            locations_1.append(location_1)
+        print(np.array(locations_0).shape)
 
         # create point location arrays (with batch dimension)
         batch[self.locations_0] = gp.Array(
