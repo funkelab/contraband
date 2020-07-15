@@ -78,10 +78,14 @@ def get_history(path):
 
 
 def save_zarr(data, zarr_file, ds, roi, voxel_size=(1, 1, 1), 
-              num_channels=1, dtype=None):
+              num_channels=1, dtype=None, fit_voxel=False):
     if not isinstance(roi, daisy.Roi):   
         roi = daisy.Roi([0 for d in range(len(roi))],
                         roi)
+
+    if fit_voxel:
+        roi = roi * voxel_size
+
     if dtype is None:
         dtype = data.dtype
 
@@ -91,6 +95,9 @@ def save_zarr(data, zarr_file, ds, roi, voxel_size=(1, 1, 1),
                                voxel_size=voxel_size,
                                dtype=data.dtype,
                                num_channels=num_channels)
+    
+    if roi.dims() > len(data.shape) and num_channels == 1:
+        data = np.squeeze(data, 0)
     dataset.data[:] = data
 
 
