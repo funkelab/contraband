@@ -177,6 +177,7 @@ class Trainer:
                 self.model.make_model(self.contrastive_params[contrastive_index]['h_channels'])
                 volume_net = SegmentationVolumeNet(self.model, seg_head)
                 volume_net.load(os.path.join(checkpoint_log_dir, 'checkpoints', checkpoint))
+                volume_net.eval()
 
                 pipeline = Predict(volume_net, params, checkpoint_log_dir)
 
