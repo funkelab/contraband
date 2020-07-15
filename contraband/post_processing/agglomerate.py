@@ -67,24 +67,10 @@ def agglomerate_with_waterz(affs,
                             merge_function='median_aff',
                             init_with_max=True,
                             return_merge_history=False,
-                            return_region_graph=False,
-                            curr_log_dir='',
-                            curr_ckpt=0,
-                            curr_sample=0,
-                            max_samples=0):
+                            return_region_graph=False):
 
     print("Extracting initial fragments...")
-    fragments = watershed(affs, 'maxima_distance',
-                          curr_log_dir=curr_log_dir,
-                          curr_ckpt=curr_ckpt,
-                          curr_sample=curr_sample,
-                          max_samples=max_samples)
-    if curr_sample < max_samples:
-        utils.save_zarr(fragments,
-                        os.path.join(curr_log_dir, 'samples/sample_' +
-                                     str(curr_ckpt) + '.zarr'),
-                        ds='fragment_' + str(curr_sample),
-                        roi=fragments.shape) 
+    fragments, affs_xy, distances = watershed(affs, 'maxima_distance')
 
     print("Agglomerating with %s", merge_function)
 
@@ -97,18 +83,22 @@ def agglomerate_with_waterz(affs,
     if discrete_queue:
         discretize_queue = 256
 
-    return waterz.agglomerate(
-        affs,
-        thresholds,
-        fragments=fragments,
-        scoring_function=scoring_functions[merge_function],
-        discretize_queue=discretize_queue,
-        return_merge_history=return_merge_history,
-        return_region_graph=return_region_graph)
+    return ( 
+        waterz.agglomerate(
+            affs,
+            thresholds,
+            fragments=fragments,
+            scoring_function=scoring_functions[merge_function],
+            discretize_queue=discretize_queue,
+            return_merge_history=return_merge_history,
+            return_region_graph=return_region_graph), 
+        fragments, 
+        affs_xy, 
+        distances
+    )
 
 
-def agglomerate(affs, thresholds, is_2d, curr_log_dir, curr_sample,
-                max_samples, curr_ckpt, **kwargs):
+def agglomerate(affs, thresholds, is_2d):
 
     thresholds = list(thresholds)
 
@@ -120,20 +110,10 @@ def agglomerate(affs, thresholds, is_2d, curr_log_dir, curr_sample,
     print("Agglomerating " + " at thresholds " + str(thresholds))
 
     start = time.time()
-    segmentation = agglomerate_with_waterz(affs, thresholds, 
-                                           curr_log_dir=curr_log_dir,
-                                           curr_sample=curr_sample,
-                                           max_samples=max_samples,
-                                           curr_ckpt=curr_ckpt,
-                                           return_merge_history=False)
+    segmentation, fragments, affs_xy, distances = \
+        agglomerate_with_waterz(affs, thresholds,
+                                return_merge_history=False)
     print("Finished agglomeration in " + str(time.time() - start) + "s")
-    #segmentation = list(segmentation)
-    #if curr_sample < max_samples:
-    #    pandas.DataFrame(segmentation[0][1]).to_csv(os.path.join(curr_log_dir, "MH_0.5"))
-    #    pandas.DataFrame(segmentation[1][1]).to_csv(os.path.join(curr_log_dir, "MH_0.75"))
-    #    print("0.5: ", segmentation[0][1])
-    #    print("0.75: ", segmentation[1][1])
-    #segmentation = np.array([segmentation[0][0], segmentation[1][0]])
-    #print(segmentation.shape)
-    return segmentation
+
+    return segmentation, fragments, affs_xy, distances
 

@@ -8,11 +8,7 @@ use_mahotas_watershed = True
 seed_distance = 10
 
 
-def get_seeds(boundary, method='grid', next_id=1, 
-              curr_log_dir='',
-              curr_ckpt=0,
-              curr_sample=0,
-              max_samples=0):
+def get_seeds(boundary, method='grid', next_id=1):
 
     if method == 'grid':
 
@@ -51,33 +47,21 @@ def get_seeds(boundary, method='grid', next_id=1,
     return seeds, num_seeds
 
 
-def watershed(affs, seed_method, curr_log_dir='',
-              curr_ckpt=0,
-              curr_sample=0,
-              max_samples=0):
+def watershed(affs, seed_method, curr_log_dir=''):
 
     affs_xy = 1.0 - 0.5 * (affs[1] + affs[2])
     depth = affs_xy.shape[0]
-
+    
+    # (z, y, x)
     fragments = np.zeros_like(affs[0]).astype(np.uint64)
 
-    if curr_sample < max_samples:
-        utils.save_zarr(affs_xy,
-                        os.path.join(curr_log_dir, 'samples/sample_' +
-                                     str(curr_ckpt) + '.zarr'),
-                        ds='boundary_' + str(curr_sample),
-                        roi=affs_xy.shape) 
     next_id = 1
     distances = np.zeros_like(affs_xy) 
     for z in range(depth):
 
         seed_data = get_seeds(affs_xy[z],
                               next_id=next_id,
-                              method=seed_method,
-                              curr_log_dir=curr_log_dir,
-                              curr_ckpt=curr_ckpt,
-                              curr_sample=curr_sample,
-                              max_samples=max_samples)
+                              method=seed_method)
 
         if seed_method == 'maxima_distance':
             seeds, num_seeds, distance = seed_data
@@ -94,11 +78,4 @@ def watershed(affs, seed_method, curr_log_dir='',
 
         next_id += num_seeds
 
-    if curr_sample < max_samples:
-        utils.save_zarr(distances,
-                        os.path.join(curr_log_dir, 'samples/sample_' +
-                                     str(curr_ckpt) + '.zarr'),
-                        ds='dist_trfm' + str(curr_sample),
-                        roi=distances.shape) 
-
-    return fragments
+    return fragments, affs_xy, distances

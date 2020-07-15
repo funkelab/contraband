@@ -6,13 +6,14 @@ from contraband.models.ContrastiveVolumeNet import (
 from contraband.utils import load_model, get_output_shape
 
 
-class Unet2D(torch.nn.Module):
+class Unet3D(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.name = "Unet2D"
+        self.name = "Unet3D"
         self.pipeline = "Standard"
-        self.in_shape = (260, 260)
+        self.z = 6 
+        self.in_shape = (self.z, 260, 260)
 
     def make_model(self, h_channels):
 
@@ -20,9 +21,9 @@ class Unet2D(torch.nn.Module):
             in_channels=1,
             num_fmaps=h_channels,
             fmap_inc_factors=6,
-            downsample_factors=[(2, 2), (2, 2), (2, 2)],
-            kernel_size_down=[[(3, 3), (3, 3)]] * 4,
-            kernel_size_up=[[(3, 3), (3, 3)]] * 3,
+            downsample_factors=[(1, 2, 2), (1, 2, 2), (1, 2, 2)],
+            kernel_size_down=[[(1, 3, 3), (1, 3, 3)]] * 4,
+            kernel_size_up=[[(1, 3, 3), (1, 3, 3)]] * 3,
             constant_upsample=True)
 
         self.out_channels = self.unet.out_channels

@@ -1,8 +1,6 @@
 import gunpowder as gp
 import logging
-import math
 import torch
-import zarr
 from contraband.pipelines.utils import (
     Blur, 
     InspectBatch,
@@ -16,12 +14,14 @@ from contraband.pipelines.utils import (
     RejectArray,
     RandomPointGenerator)
 from contraband.pipelines.contrastive_loss import contrastive_volume_loss
+import daisy
 
+logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("gunpowder.nodes.elastic_augment").setLevel(logging.INFO)
 
 
-class Standard2DContrastive():
+class Contrastive():
 
     def __init__(self, params, logdir, log_every=1):
 
@@ -73,10 +73,31 @@ class Standard2DContrastive():
         locations_1 = gp.ArrayKey('LOCATIONS_1')
         emb_1 = gp.ArrayKey('EMBEDDING_1')
 
-        in_shape = gp.Coordinate((1, *model.in_shape))
-        out_shape = gp.Coordinate((1, *(model.out_shape)[2:]))
-        print("in_shape: ", in_shape)
-        print("out_shape: ", out_shape)
+        data = daisy.open_ds(filename, dataset)
+        source_roi = gp.Roi(data.roi.get_offset(), data.roi.get_shape())
+        voxel_size = gp.Coordinate(data.voxel_size)
+        
+        # Get in and out shape
+        in_shape = gp.Coordinate(model.in_shape)
+        out_shape = gp.Coordinate(model.out_shape[2:])
+        is_2d = in_shape.dims() == 2
+
+        emb_voxel_size = voxel_size
+        # Add fake 3rd dim 
+        if is_2d: 
+            in_shape = gp.Coordinate((1, *in_shape))
+            out_shape = gp.Coordinate((1, *out_shape))
+            voxel_size = gp.Coordinate((1, *voxel_size))
+            source_roi = gp.Roi((0, *source_roi.get_offset()), 
+                                (data.shape[0], *source_roi.get_shape()))
+
+        in_shape = in_shape * voxel_size
+        out_shape = out_shape * voxel_size
+        
+        logger.info(f"source roi: {source_roi}")
+        logger.info(f"in_shape: {in_shape}")
+        logger.info(f"out_shape: {out_shape}")
+        logger.info(f"voxel_size: {voxel_size}")
 
         request = gp.BatchRequest()
         request.add(raw_0, in_shape)
@@ -90,9 +111,6 @@ class Standard2DContrastive():
         snapshot_request[emb_0] = gp.ArraySpec(roi=request[points_0].roi)
         snapshot_request[emb_1] = gp.ArraySpec(roi=request[points_1].roi)
 
-        source_shape = zarr.open(filename)[dataset].shape
-        raw_roi = gp.Roi((0, 0, 0), source_shape)
-
         random_point_generator = RandomPointGenerator(
             density=self.params['point_density'], repetitions=2)
 
@@ -105,13 +123,12 @@ class Standard2DContrastive():
                 # fake 3D data
                 array_specs={
                     raw: gp.ArraySpec(
-                        roi=raw_roi,
-                        voxel_size=(1, 1, 1),
+                        roi=source_roi,
+                        voxel_size=voxel_size,
                         interpolatable=True)
                 }) +
             gp.Normalize(raw, self.params['norm_factor']) +
             gp.Pad(raw, None) 
-            # AddRandomPoints(points, for_array=raw, density=0.0005) 
 
             for raw in [raw_0, raw_1]
         )
@@ -123,9 +140,10 @@ class Standard2DContrastive():
             RandomPointSource(
                 points_1,
                 random_point_generator=random_point_generator)
-            ))
+        ))
 
-        sources = tuple(tuple((raw, points)) for raw, points in zip(array_sources, point_sources))
+        sources = tuple(tuple((raw, points)) for raw, points 
+                        in zip(array_sources, point_sources))
         sources = tuple(
             source + 
             gp.MergeProvider()
@@ -139,15 +157,26 @@ class Standard2DContrastive():
         pipeline = (
             sources +
             gp.MergeProvider() +
-            gp.Crop(raw_0, raw_roi) +
-            gp.Crop(raw_1, raw_roi) +
+            gp.Crop(raw_0, source_roi) +
+            gp.Crop(raw_1, source_roi) +
             gp.RandomLocation() +
             PrepareBatch(
                 raw_0, raw_1,
                 points_0, points_1,
-                locations_0, locations_1) +
+                locations_0, locations_1,
+                is_2d) +
             RejectArray(ensure_nonempty=locations_0) + 
-            RejectArray(ensure_nonempty=locations_1) + 
+            RejectArray(ensure_nonempty=locations_1))
+
+        if not is_2d:
+            pipeline = (
+                pipeline +
+                AddChannelDim(raw_0) + 
+                AddChannelDim(raw_1)
+            )
+
+        pipeline = (
+            pipeline + 
             gp.PreCache() +
             gp.torch.Train(
                 model, self.training_loss, optimizer,
@@ -166,16 +195,24 @@ class Standard2DContrastive():
                     3: emb_1
                 },
                 array_specs={
-                    emb_0: gp.ArraySpec(voxel_size=(1, 1)),
-                    emb_1: gp.ArraySpec(voxel_size=(1, 1))
+                    emb_0: gp.ArraySpec(voxel_size=emb_voxel_size),
+                    emb_1: gp.ArraySpec(voxel_size=emb_voxel_size)
                 },
                 checkpoint_basename=self.logdir + '/contrastive/checkpoints/model',
                 save_every=self.params['save_every'],
                 log_dir=self.logdir + "/contrastive",
-                log_every=self.log_every) +
-            # everything is 3D, except emb_0 and emb_1
-            AddSpatialDim(emb_0) +
-            AddSpatialDim(emb_1) +
+                log_every=self.log_every))
+
+        if is_2d:
+            pipeline = (
+                pipeline + 
+                # everything is 3D, except emb_0 and emb_1
+                AddSpatialDim(emb_0) +
+                AddSpatialDim(emb_1)
+            )
+
+        pipeline = (
+            pipeline + 
             # now everything is 3D
             RemoveChannelDim(raw_0) +
             RemoveChannelDim(raw_1) +

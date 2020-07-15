@@ -1,10 +1,13 @@
-import h5py
 import gunpowder as gp
 import os
 import zarr
-from contraband.pipelines.utils import AddChannelDim, RemoveSpatialDim, RemoveChannelDim
+from contraband.pipelines.utils import AddSpatialDim, AddChannelDim, RemoveSpatialDim, RemoveChannelDim, InspectBatch
 import numpy as np
 import daisy
+
+import logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
 class Predict():
@@ -23,9 +26,9 @@ class Predict():
 
         with gp.build(pipeline):
             try:
-                os.remove(os.path.join(self.curr_log_dir, 'predictions.hdf'))
+                os.remove(os.path.join(self.curr_log_dir, 'predictions.zarr'))
             except OSError as e:
-                pass
+              pass
 
             pipeline.request_batch(gp.BatchRequest())
             f = daisy.open_ds(os.path.join(self.curr_log_dir, 'predictions.zarr'), 
@@ -38,18 +41,30 @@ class Predict():
 
         source_shape = zarr.open(self.data_file)[self.dataset].shape
         raw_roi = gp.Roi(np.zeros(len(source_shape[1:])), source_shape[1:])
-        print(raw_roi)
 
-        print(self.model.in_shape)
-        print("Out channels: ", list(self.model.out_shape)[-raw_roi.dims():])
-        input_size = gp.Coordinate(self.model.in_shape)
-        output_size = gp.Coordinate(list(self.model.out_shape)[-raw_roi.dims():])
+        data = daisy.open_ds(self.data_file, self.dataset)
+        source_roi = gp.Roi(data.roi.get_offset(), data.roi.get_shape())
+        voxel_size = gp.Coordinate(data.voxel_size)
+        
+        # Get in and out shape
+        in_shape = gp.Coordinate(self.model.in_shape)
+        out_shape = gp.Coordinate(self.model.out_shape[2:])
+
+        is_2d = in_shape.dims() == 2
+
+        in_shape = in_shape * voxel_size
+        out_shape = out_shape * voxel_size
+
+        logger.info(f"source roi: {source_roi}")
+        logger.info(f"in_shape: {in_shape}")
+        logger.info(f"out_shape: {out_shape}")
+        logger.info(f"voxel_size: {voxel_size}")
 
         request = gp.BatchRequest()
-        request.add(raw, input_size)
-        request.add(pred_affs, output_size)
-
-        context = (input_size - output_size) / 2
+        request.add(raw, in_shape)
+        request.add(pred_affs, out_shape)
+        
+        context = (in_shape - out_shape) / 2
 
         source = (
             gp.ZarrSource(
@@ -59,26 +74,38 @@ class Predict():
                 },
                 array_specs={
                     raw: gp.ArraySpec(
-                        roi=raw_roi,
+                        roi=source_roi,
                         interpolatable=True)
                 }
-            ) +
-            AddChannelDim(raw, axis=1)
+            )
+        ) 
 
+        if is_2d:
+            source = (
+                source + 
+                AddChannelDim(raw, axis=1)
+            )
+        else:
+            source = (
+                source + 
+                AddChannelDim(raw, axis=0) +
+                AddChannelDim(raw)
+            )
+
+        source = (
+            source
             # raw      : (c=1, roi)
         )
 
         with gp.build(source):
             raw_roi = source.spec[raw].roi 
-            print("raw_roi: ", raw_roi)
-            print("source_shape: ", source_shape)
-            print(context)
+            logger.info(f"raw_roi: {raw_roi}")
 
         pipeline = (
             source +
 
             gp.Normalize(raw, factor=self.params['norm_factor']) +
-            gp.Pad(raw, context) +
+            gp.Pad(raw, context) + 
 
             gp.PreCache() +
 
@@ -90,12 +117,14 @@ class Predict():
                 },
                 outputs={
                     0: pred_affs
-                },
+                }, 
                 array_specs={
-                    pred_affs: gp.ArraySpec(roi=raw_roi),
+                    pred_affs: gp.ArraySpec(roi=raw_roi)
                 }
-            ) + 
-
+            ))  
+        
+        pipeline = (
+            pipeline + 
             gp.ZarrWrite(
                 {
                     pred_affs: 'predictions',

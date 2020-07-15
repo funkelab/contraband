@@ -1,17 +1,18 @@
-import math
 import gunpowder as gp
 import logging
 import numpy as np
 import torch
-import zarr
+import daisy
 from contraband.pipelines.utils import Blur, InspectBatch, RemoveChannelDim, \
     PrepareBatch, AddSpatialDim, \
     SetDtype, AddChannelDim, RemoveSpatialDim
 
+logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("gunpowder.nodes.elastic_augment").setLevel(logging.INFO)
 
 
-class Standard2DSeg():
+class Segmentation():
 
     def __init__(self, params, logdir, log_every=500):
 
@@ -25,7 +26,7 @@ class Standard2DSeg():
 
        	print(f"Creating training pipeline with batch size {self.params['batch_size']}")
         
-        data_file = self.params['data_file']
+        filename = self.params['data_file']
         raw_dataset = self.params['dataset']['train']['raw']
         gt_dataset = self.params['dataset']['train']['gt']
     
@@ -38,47 +39,68 @@ class Standard2DSeg():
         predictions = gp.ArrayKey('PREDICTIONS')
         emb = gp.ArrayKey('EMBEDDING')
 
+        
+        
+        raw_data = daisy.open_ds(filename, raw_dataset)
+        source_roi = gp.Roi(raw_data.roi.get_offset(), raw_data.roi.get_shape())
+        source_voxel_size = gp.Coordinate(raw_data.voxel_size)
+        out_voxel_size = gp.Coordinate(raw_data.voxel_size)
+        
+        # Get in and out shape
+        in_shape = gp.Coordinate(model.in_shape)
+        out_shape = gp.Coordinate(model.out_shape[2:])
+        is_2d = in_shape.dims() == 2
+
+        in_shape = in_shape * out_voxel_size
+        out_shape = out_shape * out_voxel_size
+
+        context = (in_shape - out_shape) / 2
+        # Add fake 3rd dim 
+        if is_2d: 
+            source_voxel_size = gp.Coordinate((1, *source_voxel_size))
+            source_roi = gp.Roi((0, *source_roi.get_offset()), 
+                                (raw_data.shape[0], *source_roi.get_shape()))
+            context = gp.Coordinate((0, *context))
+            aff_neighborhood = [[0, -1, 0], [0, 0, -1]]
+        else: 
+            aff_neighborhood = [[-1, 0, 0], [0, -1, 0], [0, 0, -1]]
+
+        logger.info(f"source roi: {source_roi}")
+        logger.info(f"in_shape: {in_shape}")
+        logger.info(f"out_shape: {out_shape}")
+        logger.info(f"voxel_size: {out_voxel_size}")
+
         request = gp.BatchRequest()
-        request.add(raw, (260, 260))
-        request.add(gt_aff, (168, 168))
-        request.add(predictions, (168, 168))
+        request.add(raw, in_shape)
+        request.add(gt_aff, out_shape)
+        request.add(predictions, out_shape)
 
         snapshot_request = gp.BatchRequest()
         snapshot_request[emb] = gp.ArraySpec(
             roi=gp.Roi(
-                (0, 0),
-                model.base_encoder.out_shape[2:]))
-        
-        
-        source_shape = zarr.open(data_file)[raw_dataset].shape
-        gt_source_shape = zarr.open(data_file)[gt_dataset].shape
-        # plt.show()
-        raw_roi = gp.Roi((0, 0, 0), source_shape)
-        gt_roi = gp.Roi((0, 0, 0), gt_source_shape) 
+                (0,) * in_shape.dims(),
+                gp.Coordinate((*model.base_encoder.out_shape[2:],)) * out_voxel_size))
 
-        context = (gp.Coordinate((1, 260, 260)) - gp.Coordinate((1, 168, 168))) / 2
+        print(context)
 
         source = (
             gp.ZarrSource(
-                data_file,
+                filename,
                 {
                     raw: raw_dataset,
                     gt_labels: gt_dataset 
                 },
-                # fake 3D data
                 array_specs={
                     raw: gp.ArraySpec(
-                        roi=raw_roi,
-                        voxel_size=(1, 1, 1),
+                        roi=source_roi,
+                        voxel_size=source_voxel_size,
                         interpolatable=True),
                     gt_labels: gp.ArraySpec(
-                        roi=gt_roi,
-                        voxel_size=(1, 1, 1),
-                        interpolatable=True,
-                        dtype=np.uint32)
+                        roi=source_roi,
+                        voxel_size=source_voxel_size,
+                        interpolatable=True)
                 }
             ) +
-            # SetDtype(gt_aff, np.uint8) +
             gp.Normalize(raw, self.params['norm_factor']) +
             gp.Pad(raw, context) + 
             gp.Pad(gt_labels, context) +
@@ -92,20 +114,27 @@ class Standard2DSeg():
             source +
             # raw      : (l=1, h, w)
             # gt_labels: (l=1, h, w)
-            gp.AddAffinities([[0, -1, 0], [0, 0, -1]],
+            gp.AddAffinities(aff_neighborhood,
                              gt_labels, gt_aff) + 
-            #gp.Normalize(gt_aff, factor=1.0) + 
             SetDtype(gt_aff, np.float32) +
             # raw      : (l=1, h, w)
             # gt_aff   : (c=2, l=1, h, w)
-            AddChannelDim(raw) +
+            AddChannelDim(raw)
             # raw      : (c=1, l=1, h, w)
             # gt_aff   : (c=2, l=1, h, w)
-            RemoveSpatialDim(raw) +
-            RemoveSpatialDim(gt_aff) +
-            # raw      : (c=1, h, w)
-            # gt_aff   : (c=2, h, w)
-            # InspectBatch('before stack:') +
+        )
+
+        if is_2d:
+            pipeline = (
+                pipeline + 
+                RemoveSpatialDim(raw) +
+                RemoveSpatialDim(gt_aff)
+                # raw      : (c=1, h, w)
+                # gt_aff   : (c=2, h, w)
+            )
+
+        pipeline = (
+            pipeline + 
             gp.Stack(self.params['batch_size']) +
             gp.PreCache() +
             # raw      : (b, c=1, h, w)
@@ -125,7 +154,7 @@ class Standard2DSeg():
                     1: emb
                 },
                 array_specs={
-                    predictions: gp.ArraySpec(voxel_size=(1, 1)),
+                    predictions: gp.ArraySpec(voxel_size=out_voxel_size),
                 },
                 checkpoint_basename=self.logdir + '/checkpoints/model',
                 save_every=self.params['save_every'],
@@ -148,27 +177,22 @@ class Standard2DSeg():
                 },
                 additional_request=snapshot_request,
                 every=self.params['save_every']) +
-            gp.PrintProfilingStats(every=10)
+            gp.PrintProfilingStats(every=500)
         )
 
         return pipeline, request
 
     def _augmentation_pipeline(self, raw, source):
         if 'elastic' in self.params and self.params['elastic']:
-            source = source + gp.ElasticAugment(
-                control_point_spacing=(1, 10, 10),
-                jitter_sigma=(0, 0.1, 0.1),
-                rotation_interval=(0, math.pi / 2))
+            source = source + gp.ElasticAugment(**self.params["elastic_params"])
 
         if 'blur' in self.params and self.params['blur']:
-            source = source + Blur(raw, sigma=[0, 1, 1])
+            source = source + Blur(raw, **self.params["blur_params"])
 
         if 'simple' in self.params and self.params['simple']:
             source = source + gp.SimpleAugment(
-                mirror_only=(1, 2),
-                transpose_only=(1, 2)) 
+                **self.params["simple_params"]) 
 
         if 'noise' in self.params and self.params['noise']:
-            source = source + gp.NoiseAugment(raw, var=0.001)
-
+            source = source + gp.NoiseAugment(raw, **self.params['noise_params'])
         return source

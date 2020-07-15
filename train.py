@@ -1,6 +1,7 @@
 import argparse
 from contraband.Trainer import Trainer
 from contraband.models.Unet2D import Unet2D
+from contraband.models.Unet3D import Unet3D
 
 
 if __name__ == '__main__':
@@ -22,6 +23,8 @@ if __name__ == '__main__':
     model = args['model']
     if model == 'Unet2D':
         model = Unet2D()
+    elif model == 'Unet3D':
+        model = Unet3D()
     else:
         raise ValueError("invalid model name")
 
