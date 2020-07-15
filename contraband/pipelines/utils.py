@@ -107,7 +107,7 @@ class InspectBatch(gp.BatchFilter):
 
     def process(self, batch, request):
         for key, array in batch.arrays.items():
-            print(f"{self.prefix} ======== {key}: {array.data.shape}")
+            print(f"{self.prefix} ======== {key}: {array.data.shape} ROI: {array.spec.roi}")
         for key, graph in batch.graphs.items():
             print(f"{self.prefix} ======== {key}: {graph}")
 
@@ -373,8 +373,6 @@ class PrepareBatch(gp.BatchFilter):
             locations_0 = locations_0[:, 1:]
             locations_1 = locations_1[:, 1:]
 
-        print(np.array(locations_0).shape)
-
         # create point location arrays (with batch dimension)
         batch[self.locations_0] = gp.Array(
             locations_0, self.spec[self.locations_0])
@@ -465,7 +463,7 @@ class RejectArray(gp.BatchFilter):
 
     def provide(self, request):
 
-        report_next_timeout = 10
+        report_next_timeout = 2
         num_rejected = 0
 
         timing = Timing(self)
@@ -483,8 +481,7 @@ class RejectArray(gp.BatchFilter):
                 num_rejected += 1
 
                 if timing.elapsed() > report_next_timeout:
-
-                    logger.debug(
+                    logger.info(
                         f"rejected {report_next_timeout} batches, been waiting for a good one "
                         "since {report_next_timeout}")
                     report_next_timeout *= 2
