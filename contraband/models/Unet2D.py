@@ -11,7 +11,7 @@ class Unet2D(torch.nn.Module):
         super().__init__()
 
         self.name = "Unet2D"
-        self.pipeline = "Standard2D"
+        self.pipeline = "Standard"
         self.in_shape = (260, 260)
 
     def make_model(self, h_channels):

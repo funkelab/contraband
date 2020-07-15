@@ -11,7 +11,7 @@ class Unet3D(torch.nn.Module):
         super().__init__()
 
         self.name = "Unet3D"
-        self.pipeline = "Standard2D"
+        self.pipeline = "Standard"
         self.z = 6 
         self.in_shape = (self.z, 260, 260)
 

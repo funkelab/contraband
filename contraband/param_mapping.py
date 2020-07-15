@@ -1,10 +1,10 @@
+# Math is not actually unsed
+import math
 import torch
-from contraband.pipelines.Standard2DContrastive import Standard2DContrastive
-from contraband.pipelines.Standard2DSeg import Standard2DSeg
+from contraband.pipelines.Contrastive import Contrastive
+from contraband.pipelines.Segmentation import Segmentation
 from contraband.segmentation_heads.SimpleSegHead import SimpleSegHead
 from itertools import product
-import math
-
 
 def generate_param_grid(params):
     return [
@@ -39,10 +39,10 @@ def map_params(params):
 
 
 def map_pipeline(mode, pipeline):
-    if pipeline == "Standard2D":
+    if pipeline == "Standard":
         if mode == 'contrastive':
-            return Standard2DContrastive
+            return Contrastive
         else:
-            return Standard2DSeg
+            return Segmentation
     else:
         raise ValueError('Incorrect pipeline: ' + pipeline)

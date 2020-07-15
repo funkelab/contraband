@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger("gunpowder.nodes.elastic_augment").setLevel(logging.INFO)
 
 
-class Standard2DSeg():
+class Segmentation():
 
     def __init__(self, params, logdir, log_every=500):
 

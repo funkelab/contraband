@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger("gunpowder.nodes.elastic_augment").setLevel(logging.INFO)
 
 
-class Standard2DContrastive():
+class Contrastive():
 
     def __init__(self, params, logdir, log_every=1):
 
