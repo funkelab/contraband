@@ -1,7 +1,6 @@
 import gunpowder as gp
 import logging
 import torch
-import zarr
 from contraband.pipelines.utils import (
     Blur, 
     InspectBatch,
