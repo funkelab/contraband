@@ -4,6 +4,7 @@ import torch
 from contraband.pipelines.Contrastive import Contrastive
 from contraband.pipelines.Segmentation import Segmentation
 from contraband.segmentation_heads.SimpleSegHead import SimpleSegHead
+from contraband.models.Unet import Unet
 from itertools import product
 
 def generate_param_grid(params):
@@ -38,8 +39,18 @@ def map_params(params):
                     eval(dim.replace("pi", "math.pi"))
 
 
+def map_model_params(params):
+    if params['model'] == "unet":
+        params['model'] = Unet()
+    # Make downsample_factors tuples, torch complains otherwise
+    params['downsample_factors'] = [tuple(factor) for factor in params['downsample_factors']]
+
+    params['kernel_size_down'] = params['kernel_size_down'] * params['kernel_size_down_repeated']
+    params['kernel_size_up'] = params['kernel_size_up'] * params['kernel_size_up_repeated']
+
+
 def map_pipeline(mode, pipeline):
-    if pipeline == "Standard":
+    if pipeline == "standard":
         if mode == 'contrastive':
             return Contrastive
         else:

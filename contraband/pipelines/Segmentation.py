@@ -14,7 +14,7 @@ logging.getLogger("gunpowder.nodes.elastic_augment").setLevel(logging.INFO)
 
 class Segmentation():
 
-    def __init__(self, params, logdir, log_every=500):
+    def __init__(self, params, logdir, log_every=1):
 
         self.params = params
         self.logdir = logdir
@@ -38,8 +38,6 @@ class Segmentation():
         gt_aff = gp.ArrayKey('AFFINITIES')
         predictions = gp.ArrayKey('PREDICTIONS')
         emb = gp.ArrayKey('EMBEDDING')
-
-        
         
         raw_data = daisy.open_ds(filename, raw_dataset)
         source_roi = gp.Roi(raw_data.roi.get_offset(), raw_data.roi.get_shape())
@@ -55,6 +53,7 @@ class Segmentation():
         out_shape = out_shape * out_voxel_size
 
         context = (in_shape - out_shape) / 2
+        gt_labels_out_shape = out_shape
         # Add fake 3rd dim 
         if is_2d: 
             source_voxel_size = gp.Coordinate((1, *source_voxel_size))
@@ -62,6 +61,7 @@ class Segmentation():
                                 (raw_data.shape[0], *source_roi.get_shape()))
             context = gp.Coordinate((0, *context))
             aff_neighborhood = [[0, -1, 0], [0, 0, -1]]
+            gt_labels_out_shape = (1, *gt_labels_out_shape)
         else: 
             aff_neighborhood = [[-1, 0, 0], [0, -1, 0], [0, 0, -1]]
 
@@ -69,6 +69,7 @@ class Segmentation():
         logger.info(f"in_shape: {in_shape}")
         logger.info(f"out_shape: {out_shape}")
         logger.info(f"voxel_size: {out_voxel_size}")
+        logger.info(f"context: {context}")
 
         request = gp.BatchRequest()
         request.add(raw, in_shape)
@@ -80,8 +81,7 @@ class Segmentation():
             roi=gp.Roi(
                 (0,) * in_shape.dims(),
                 gp.Coordinate((*model.base_encoder.out_shape[2:],)) * out_voxel_size))
-
-        print(context)
+        snapshot_request[gt_labels] = gp.ArraySpec(roi=gp.Roi(context, gt_labels_out_shape))
 
         source = (
             gp.ZarrSource(
@@ -97,8 +97,7 @@ class Segmentation():
                         interpolatable=True),
                     gt_labels: gp.ArraySpec(
                         roi=source_roi,
-                        voxel_size=source_voxel_size,
-                        interpolatable=True)
+                        voxel_size=source_voxel_size)
                 }
             ) +
             gp.Normalize(raw, self.params['norm_factor']) +
@@ -116,7 +115,7 @@ class Segmentation():
             # gt_labels: (l=1, h, w)
             gp.AddAffinities(aff_neighborhood,
                              gt_labels, gt_aff) + 
-            SetDtype(gt_aff, np.float32) +
+            SetDtype(gt_aff, np.float32) + 
             # raw      : (l=1, h, w)
             # gt_aff   : (c=2, l=1, h, w)
             AddChannelDim(raw)
@@ -166,11 +165,15 @@ class Segmentation():
             # raw        : (b, c=1, h, w)
             # gt_aff     : (b, c=2, h, w)
             # predictions: (b, c=2, h, w)
+
+            # Crop GT to look at labels
+            gp.Crop(gt_labels, gp.Roi(context, gt_labels_out_shape)) +
             gp.Snapshot(
                 output_dir=self.logdir + '/snapshots',
                 output_filename='it{iteration}.hdf',
                 dataset_names={
                     raw: 'raw',
+                    gt_labels: 'gt_labels',
                     predictions: 'predictions',
                     gt_aff: 'gt_aff',
                     emb: 'emb'

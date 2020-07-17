@@ -1,13 +1,11 @@
 import argparse
 from contraband.Trainer import Trainer
-from contraband.models.Unet2D import Unet2D
-from contraband.models.Unet3D import Unet3D
 
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Process some integers.')
-    parser.add_argument('-model')
+    parser.add_argument('-dataset')
     parser.add_argument('-exp')
     parser.add_argument('-mode')
     parser.add_argument('-index')
@@ -20,12 +18,9 @@ if __name__ == '__main__':
     else:
         exp = args['exp']
 
-    model = args['model']
-    if model == 'Unet2D':
-        model = Unet2D()
-    elif model == 'Unet3D':
-        model = Unet3D()
-    else:
+    dataset = args['dataset']
+    datasets = ['fluo', '17_A1']
+    if dataset not in datasets:
         raise ValueError("invalid model name")
 
     index = None
@@ -38,4 +33,4 @@ if __name__ == '__main__':
     print(index)
     mode = args['mode']
 
-    Trainer(model, exp, mode).train(index)
+    Trainer(dataset, exp, mode).train(index)
