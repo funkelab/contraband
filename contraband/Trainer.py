@@ -191,6 +191,7 @@ class Trainer:
 
                 volume_net = SegmentationVolumeNet(model, seg_head)
                 volume_net.load(os.path.join(checkpoint_log_dir, 'checkpoints', checkpoint))
+                volume_net.eval()
 
                 pipeline = Predict(volume_net, pipeline_params, checkpoint_log_dir)
 
