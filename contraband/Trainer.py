@@ -39,7 +39,12 @@ class Trainer:
         self.contrastive_params = mapping.generate_param_grid(self.params['contrastive'])
         self.contrastive_combs = len(self.contrastive_params)
         self.seg_params = mapping.generate_param_grid(self.params['seg'])
-        self.model_params = self.params['model'] * self.contrastive_combs 
+        self.model_params = self.params['model'] 
+        
+        # Get correct combintations bewtween contrative and model
+        self.contrastive_params = self.contrastive_params * len(self.model_params)
+        self.model_params = self.model_params * self.contrastive_combs
+
         self.root_logger.info("All model params: {self.model_params}")
         self.pipeline = self.params['pipeline']
 
