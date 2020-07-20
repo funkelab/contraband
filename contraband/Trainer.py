@@ -12,7 +12,7 @@ import numpy as np
 from pprint import pformat
 
 class Trainer:
-    def __init__(self, dataset, expirement_num, mode):
+    def __init__(self, dataset, expirement_num, mode, checkpoints):
 
         expirement_dir = [
             filename
@@ -34,22 +34,19 @@ class Trainer:
                               expirement_dir.split('-')[:2], dataset)
         self.root_logger.info("Parameter dict: %s", self.params)
         self.root_logger.info("")
-
+        
+        self.checkpoints = checkpoints
 
         self.contrastive_params = mapping.generate_param_grid(self.params['contrastive'])
         self.contrastive_combs = len(self.contrastive_params)
         self.seg_params = mapping.generate_param_grid(self.params['seg'])
         self.model_params = self.params['model'] 
+
+        # Get correct combinations of parameters
         index_combs = {"contrastive": self.contrastive_params, "model": self.model_params}
         index_combs = mapping.generate_param_grid(index_combs)
-        print(index_combs)
         self.contrastive_combs = [comb['contrastive'] for comb in index_combs]
         self.model_params = [comb['model'] for comb in index_combs]
-        print(self.contrastive_combs)
-        print(self.model_params) 
-        # Get correct combintations bewtween contrative and model
-        #self.contrastive_params = self.contrastive_params * len(self.model_params)
-        #self.model_params = self.model_params * self.contrastive_combs
 
         self.root_logger.info("All model params: {self.model_params}")
         self.pipeline = self.params['pipeline']
@@ -150,7 +147,9 @@ class Trainer:
 
     def _seg_train_loop(self, model, pipeline_params, model_params, pipeline, curr_log_dir, seg_comb_dir):
         for checkpoint in utils.get_checkpoints(os.path.join(curr_log_dir, 
-                                                "contrastive/checkpoints"), match='checkpoint'):
+                                                "contrastive/checkpoints"),
+                                                match='checkpoint',
+                                                white_list=self.checkpoints):
             checkpoint_log_dir = os.path.join(seg_comb_dir, 
                                               'contrastive_ckpt' +
                                               checkpoint.split('_')[2]) 

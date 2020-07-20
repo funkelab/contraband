@@ -56,16 +56,20 @@ def get_output_shape(model, image_dim):
     return model(torch.rand(*(image_dim))).data.shape
 
 
-def get_checkpoints(path, match=None):
+def get_checkpoints(path, match=None, white_list=[]):
     print(path)
     if match is None:
-        checkpionts = [filename for filename in os.listdir(path)]
+        checkpoints = [filename for filename in os.listdir(path)]
     else:
-        checkpionts = [filename for filename in os.listdir(path) if match in filename]
-    checkpionts.sort()
-    print(checkpionts)
+        checkpoints = [filename for filename in os.listdir(path) if match in filename]
+        if white_list:
+            checkpoints = [filename for filename in checkpoints
+                           if any(checkpoint in filename for checkpoint in white_list)]
+    checkpoints.sort()
 
-    return checkpionts
+    print(checkpoints)
+
+    return checkpoints
 
 
 def get_history(path):

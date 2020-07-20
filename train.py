@@ -9,6 +9,8 @@ if __name__ == '__main__':
     parser.add_argument('-exp')
     parser.add_argument('-mode')
     parser.add_argument('-index')
+    parser.add_argument('-checkpoints',
+                        nargs='+')
     parser.add_argument('--fullpath')
     args = vars(parser.parse_args())
 
@@ -30,7 +32,11 @@ if __name__ == '__main__':
         print(e)
     if index is None:
         raise ValueError("index is not specified or is not an int")
-    print(index)
+
     mode = args['mode']
 
-    Trainer(dataset, exp, mode).train(index)
+    checkpoints = []
+    if 'checkpoints' in args:
+        checkpoints = args['checkpoints']
+
+    Trainer(dataset, exp, mode, checkpoints).train(index)
