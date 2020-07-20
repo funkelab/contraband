@@ -45,7 +45,7 @@ class Trainer:
         # Get correct combinations of parameters
         index_combs = {"contrastive": self.contrastive_params, "model": self.model_params}
         index_combs = mapping.generate_param_grid(index_combs)
-        self.contrastive_combs = [comb['contrastive'] for comb in index_combs]
+        self.contrastive_params = [comb['contrastive'] for comb in index_combs]
         self.model_params = [comb['model'] for comb in index_combs]
 
         self.root_logger.info("All model params: {self.model_params}")
@@ -80,6 +80,7 @@ class Trainer:
                          index,
                          self.root_handler,
                          pformat(self.model_params[index]))
+        utils.log_params(curr_log_dir, index, self.root_handler, self.model_params)
         mapping.map_model_params(self.model_params[index])
 
         model = self.model_params[index]['model']
@@ -112,6 +113,7 @@ class Trainer:
             for i, seg_comb in enumerate(self.seg_params):
                 seg_comb_dir = os.path.join(curr_log_dir, "seg/combination-" + str(i))
                 utils.log_params(seg_comb_dir, i, self.root_handler, self.seg_params)
+
                 mapping.map_params(self.seg_params[i])
 
                 self._validate(model,
