@@ -186,7 +186,8 @@ class Trainer:
 
     def _validate(self, model, pipeline_params, model_params, curr_log_dir):
 
-        for contrastive_ckpt in utils.get_checkpoints(curr_log_dir, match='ckpt'):
+        for contrastive_ckpt in utils.get_checkpoints(curr_log_dir, match='ckpt',
+                                                      white_list=self.checkpoints):
             for checkpoint in utils.get_checkpoints(os.path.join(curr_log_dir, 
                                                     contrastive_ckpt, 'checkpoints'), match='checkpoint'):
                 checkpoint_log_dir = os.path.join(curr_log_dir, 
