@@ -45,7 +45,7 @@ class Trainer:
         # Get correct combinations of parameters
         index_combs = {"contrastive": self.contrastive_params, "model": self.model_params}
         index_combs = mapping.generate_param_grid(index_combs)
-        self.contrastive_combs = [comb['contrastive'] for comb in index_combs]
+        self.contrastive_params = [comb['contrastive'] for comb in index_combs]
         self.model_params = [comb['model'] for comb in index_combs]
 
         self.root_logger.info("All model params: {self.model_params}")
