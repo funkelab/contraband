@@ -52,9 +52,15 @@ class SegmentationVolumeNet(torch.nn.Module):
 
         return z, h
 
-    def load(self, checkpoint_file):
+    def load_base_encoder(self, checkpoint_file):
         self.base_encoder = load_model(self.base_encoder,
                                        "base_encoder.",
+                                       checkpoint_file,
+                                       freeze_model=True)
+
+    def load_seg_head(self, checkpoint_file):
+        self.seg_head = load_model(self.seg_head,
+                                       "seg_head.",
                                        checkpoint_file,
                                        freeze_model=True)
 

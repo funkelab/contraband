@@ -162,7 +162,7 @@ class Trainer:
                                           pipeline_params['seg_out_channels'])
 
             volume_net = SegmentationVolumeNet(model, seg_head)
-            volume_net.load(os.path.join(curr_log_dir, 'contrastive/checkpoints', checkpoint))
+            volume_net.load_base_encoder(os.path.join(curr_log_dir, 'contrastive/checkpoints', checkpoint))
 
             print("Model's state_dict:")
             for param_tensor in volume_net.state_dict():
@@ -201,7 +201,13 @@ class Trainer:
                                               pipeline_params['seg_out_channels'])
 
                 volume_net = SegmentationVolumeNet(model, seg_head)
-                volume_net.load(os.path.join(checkpoint_log_dir, 'checkpoints', checkpoint))
+
+                print("Model's state_dict:")
+                for param_tensor in volume_net.state_dict():
+                    print(param_tensor, "\t", volume_net.state_dict()[param_tensor].size())
+
+                volume_net.load_base_encoder(os.path.join(checkpoint_log_dir, 'checkpoints', checkpoint))
+                volume_net.load_seg_head(os.path.join(checkpoint_log_dir, 'checkpoints', checkpoint))
                 volume_net.eval()
 
                 pipeline = Predict(volume_net, pipeline_params, checkpoint_log_dir)
