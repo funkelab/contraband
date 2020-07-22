@@ -22,6 +22,7 @@ def save_samples(pred_affs,
                  fragments,
                  boundarys,
                  distances,
+                 history,
                  threshold,
                  curr_log_dir,
                  checkpoint,
@@ -83,6 +84,12 @@ def save_samples(pred_affs,
     seg.data[:] = segmentation
     gt.data[:] = labels
     pred.data[:] = pred_affs
+
+    history = [merge for thresh in history for merge in thresh]
+    history = pd.DataFrame(history)
+    history.to_csv(os.path.join(curr_log_dir, 
+                                f'samples/sample_{checkpoint}_hist' +
+                                f'_{threshold}.csv'))
         
 
 
@@ -121,6 +128,7 @@ def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, chec
     best_fragments = np.zeros(labels.shape[len(labels.shape) - pred_aff_ds.roi.dims():])
     best_dist = np.zeros(labels.shape[len(labels.shape) - pred_aff_ds.roi.dims():])
     best_boundary = np.zeros(labels.shape[len(labels.shape) - pred_aff_ds.roi.dims():])
+    best_history = None
     best_channel = -1 
 
     logging.info("Thresholds: {thresholds}")
@@ -135,25 +143,28 @@ def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, chec
         labels = labels[np.newaxis]
     # pick large value to start
     best_voi_sum = 10000 
-    segs_per_thresh = np.zeros((len(thresholds), *best_seg.shape))
     for channel in range(num_channels):
         curr_segmentation, fragments, boundary, distance = \
             agglomerate(pred_aff[channel],
                         thresholds=thresholds,
                         is_2d=is_2d)
 
+        original_fragments = fragments.copy()
+        hist_per_thresh = np.zeros(len(thresholds), dtype=object)
+        segs_per_thresh = np.zeros((len(thresholds), *best_seg.shape))
         threshold = 0
-        for segmentation, label in zip(curr_segmentation, labels[channel]):
+        for segmentation in curr_segmentation:
             
-            logger.info(f"Agglomeration: {segmentation.shape}")
-            segs_per_thresh[threshold] = segmentation
+            logger.info(f"Agglomeration: {segmentation[0].shape}")
+            segs_per_thresh[threshold] = segmentation[0]
+            hist_per_thresh[threshold] = segmentation[1]
 
             logger.info(f"Labels: {labels[channel].shape}")
             label = labels[channel]
             if len(label.shape) == 2:
                 label = label[np.newaxis]
 
-            curr_metrics = waterz.evaluate(segmentation, label)
+            curr_metrics = waterz.evaluate(segmentation[0], label)
             curr_metrics['voi_sum'] = curr_metrics['voi_split'] + curr_metrics['voi_merge']
             logger.info(f"metrics{curr_metrics}")
             for key in metrics[thresholds[threshold]].keys():
@@ -171,10 +182,12 @@ def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, chec
         if min_curr_voi < best_voi_sum:
             best_threshold = min_curr_threshold
             best_seg = np.array(segs_per_thresh[thresholds.index(min_curr_threshold)])
-            best_fragments = fragments
+            best_fragments = original_fragments
             best_boundary = boundary
             best_dist = distance
+            best_history = hist_per_thresh[:thresholds.index(min_curr_threshold)]
             best_channel = channel
+            best_voi_sum = min_curr_voi
 
 
     averaged_metrics = {threshold: {metric: sum(total) / labels.shape[0]
@@ -193,6 +206,7 @@ def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, chec
                  best_fragments,
                  best_boundary,
                  best_dist,
+                 best_history,
                  best_threshold,
                  curr_log_dir,
                  checkpoint,

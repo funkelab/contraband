@@ -52,7 +52,7 @@ class Blur(gp.BatchFilter):
 
     def __init__(self, array, sigma=1):
         self.array = array
-        self.sigma = sigma
+        self.sigma = sigma.copy()
         self.filter_radius = np.ceil(np.array(self.sigma) * 3)
 
     def setup(self):
@@ -90,10 +90,14 @@ class Blur(gp.BatchFilter):
         roi = raw.spec.roi
         
         if not isinstance(self.sigma, Iterable):
-            self.sigma = [0 for dim in range(len(raw.data.shape) - roi.dims())] \
+            sigma = [0 for dim in range(len(raw.data.shape) - roi.dims())] \
                 + [self.sigma for dim in range(roi.dims())]
+        else: 
+            sigma = [0 for dim in range(len(raw.data.shape) - roi.dims())] \
+                + self.sigma 
 
-        raw.data = filters.gaussian(raw.data, sigma=self.sigma,
+
+        raw.data = filters.gaussian(raw.data, sigma=sigma,
                                     mode='constant', preserve_range=True,
                                     multichannel=False)
         
