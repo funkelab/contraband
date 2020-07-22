@@ -112,8 +112,7 @@ def agglomerate(affs, thresholds, is_2d):
     start = time.time()
     segmentation, fragments, affs_xy, distances = \
         agglomerate_with_waterz(affs, thresholds,
-                                return_merge_history=False)
+                                return_merge_history=True)
     print("Finished agglomeration in " + str(time.time() - start) + "s")
-
     return segmentation, fragments, affs_xy, distances
 
