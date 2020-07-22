@@ -1,10 +1,10 @@
 import gunpowder as gp
+import shutil
 import os
 import zarr
 from contraband.pipelines.utils import AddSpatialDim, AddChannelDim, RemoveSpatialDim, RemoveChannelDim, InspectBatch
 import numpy as np
 import daisy
-
 import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -26,9 +26,9 @@ class Predict():
 
         with gp.build(pipeline):
             try:
-                os.remove(os.path.join(self.curr_log_dir, 'predictions.zarr'))
+                shutil.rmtree(os.path.join(self.curr_log_dir, 'predictions.zarr'))
             except OSError as e:
-              pass
+                pass
 
             pipeline.request_batch(gp.BatchRequest())
             f = daisy.open_ds(os.path.join(self.curr_log_dir, 'predictions.zarr'), 
@@ -75,7 +75,7 @@ class Predict():
                 array_specs={
                     raw: gp.ArraySpec(
                         roi=source_roi,
-                        interpolatable=True)
+                        interpolatable=False)
                 }
             )
         ) 
