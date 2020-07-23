@@ -378,6 +378,8 @@ class PrepareBatch(gp.BatchFilter):
         if self.is_2d:
             locations_0 = locations_0[:, 1:]
             locations_1 = locations_1[:, 1:]
+        locations_0 = locations_0[np.newaxis]
+        locations_1 = locations_1[np.newaxis]
 
         # create point location arrays (with batch dimension)
         batch[self.locations_0] = gp.Array(
