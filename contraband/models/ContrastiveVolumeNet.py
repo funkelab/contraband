@@ -28,11 +28,11 @@ class ContrastiveVolumeNet(torch.nn.Module):
         # (b, c, dim_1, ..., dim_d)
         h_0 = self.base_encoder(raw_0)
         z_0 = self.projection_head(h_0)
-        z_0_norm = torch.nn.functional.normalize(z_0, 1)
+        z_0_norm = torch.nn.functional.normalize(z_0, 2)
 
         h_1 = self.base_encoder(raw_1)
         z_1 = self.projection_head(h_1)
-        z_1_norm = torch.nn.functional.normalize(z_1, 1)
+        z_1_norm = torch.nn.functional.normalize(z_1, 2)
 
         return h_0, h_1, z_0_norm, z_1_norm
 
