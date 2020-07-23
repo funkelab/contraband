@@ -32,15 +32,13 @@ class Contrastive():
         self.logdir = logdir
         self.log_every = log_every
 
-        temperature = 1.0
-
         def loss(emb_0, emb_1, locations_0, locations_1):
             return contrastive_volume_loss(
                 emb_0,
                 emb_1,
                 locations_0,
                 locations_1,
-                temperature)
+                self.params['temperature'])
         self.training_loss = loss
         self.val_loss = torch.nn.MSELoss()
 
