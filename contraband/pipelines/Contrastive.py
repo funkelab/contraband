@@ -12,9 +12,12 @@ from contraband.pipelines.utils import (
     AddChannelDim,
     RemoveSpatialDim,
     RejectArray,
-    RandomPointGenerator)
+    RandomPointGenerator,
+    RandomSourceGenerator,
+    RandomMultiBranchSource)
 from contraband.pipelines.contrastive_loss import contrastive_volume_loss
 import daisy
+import numpy as np
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -62,7 +65,7 @@ class Contrastive():
                                                    **self.params['optimizer_kwargs'])
 
         filename = self.params['data_file']
-        dataset = self.params['dataset']
+        datasets = self.params['dataset']
 
         raw_0 = gp.ArrayKey('RAW_0')
         points_0 = gp.GraphKey('POINTS_0')
@@ -73,7 +76,7 @@ class Contrastive():
         locations_1 = gp.ArrayKey('LOCATIONS_1')
         emb_1 = gp.ArrayKey('EMBEDDING_1')
 
-        data = daisy.open_ds(filename, dataset)
+        data = daisy.open_ds(filename, datasets[0])
         source_roi = gp.Roi(data.roi.get_offset(), data.roi.get_shape())
         voxel_size = gp.Coordinate(data.voxel_size)
         
@@ -113,25 +116,43 @@ class Contrastive():
 
         random_point_generator = RandomPointGenerator(
             density=self.params['point_density'], repetitions=2)
+        
+        # Use volume to calculate probabilities, RandomSourceGenerator will
+        # normalize volumes to probablilties
+        probabilities = np.array([np.product(daisy.open_ds(filename, dataset).shape) 
+                                  for dataset in datasets])
+        random_source_generator = RandomSourceGenerator(num_sources=len(datasets), 
+                                                        probabilities=probabilities,
+                                                        repetitions=2)
 
         array_sources = tuple(
-            gp.ZarrSource(
-                filename,
-                {
-                    raw: dataset 
-                },
-                # fake 3D data
-                array_specs={
-                    raw: gp.ArraySpec(
-                        roi=source_roi,
-                        voxel_size=voxel_size,
-                        interpolatable=True)
-                }) +
-            gp.Normalize(raw, self.params['norm_factor']) +
-            gp.Pad(raw, None) 
+            tuple(
+                gp.ZarrSource(
+                    filename,
+                    {
+                        raw: dataset 
+                    },
+                    # fake 3D data
+                    array_specs={
+                        raw: gp.ArraySpec(
+                            roi=source_roi,
+                            voxel_size=voxel_size,
+                            interpolatable=True)
+                    })
 
+                for dataset in datasets
+            )
             for raw in [raw_0, raw_1]
         )
+
+        # Choose a random dataset to pull from
+        array_sources = \
+            tuple(arrays +
+                  RandomMultiBranchSource(random_source_generator) + 
+                  gp.Normalize(raw, self.params['norm_factor']) +
+                  gp.Pad(raw, None)
+                  for raw, arrays 
+                  in zip([raw_0, raw_1], array_sources))
 
         point_sources = tuple((
             RandomPointSource(
@@ -141,14 +162,14 @@ class Contrastive():
                 points_1,
                 random_point_generator=random_point_generator)
         ))
-
-        sources = tuple(tuple((raw, points)) for raw, points 
-                        in zip(array_sources, point_sources))
+        
+        # Merge the point and array sources together. 
+        # There is one array and point source per branch.
         sources = tuple(
-            source + 
+            (array_source, point_source) +
             gp.MergeProvider()
-            for source in sources)
-
+            for array_source, point_source in zip(array_sources, point_sources))
+    
         sources = tuple(
             self._make_train_augmentation_pipeline(raw, source) 
             for raw, source in zip([raw_0, raw_1], sources)
