@@ -15,7 +15,7 @@ from contraband.pipelines.utils import (
     RandomPointGenerator,
     RandomSourceGenerator,
     RandomMultiBranchSource)
-from contraband.pipelines.contrastive_loss import contrastive_volume_loss
+from contraband.pipelines.contrastive_loss import ContrastiveVolumeLoss
 import daisy
 import numpy as np
 
@@ -31,15 +31,6 @@ class Contrastive():
         self.params = params
         self.logdir = logdir
         self.log_every = log_every
-
-        def loss(emb_0, emb_1, locations_0, locations_1):
-            return contrastive_volume_loss(
-                emb_0,
-                emb_1,
-                locations_0,
-                locations_1,
-                self.params['temperature'])
-        self.training_loss = loss
         self.val_loss = torch.nn.MSELoss()
 
     def _make_train_augmentation_pipeline(self, raw, source):
@@ -84,6 +75,11 @@ class Contrastive():
         is_2d = in_shape.dims() == 2
 
         emb_voxel_size = voxel_size
+
+        cv_loss = ContrastiveVolumeLoss(self.params['temperature'],
+                                        self.params['point_density'],
+                                        out_shape * voxel_size)
+
         # Add fake 3rd dim 
         if is_2d: 
             in_shape = gp.Coordinate((1, *in_shape))
@@ -99,6 +95,7 @@ class Contrastive():
         logger.info(f"in_shape: {in_shape}")
         logger.info(f"out_shape: {out_shape}")
         logger.info(f"voxel_size: {voxel_size}")
+
 
         request = gp.BatchRequest()
         request.add(raw_0, in_shape)
@@ -198,7 +195,7 @@ class Contrastive():
             pipeline + 
             gp.PreCache() +
             gp.torch.Train(
-                model, self.training_loss, optimizer,
+                model, cv_loss, optimizer,
                 inputs={
                     'raw_0': raw_0,
                     'raw_1': raw_1
