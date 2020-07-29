@@ -93,7 +93,7 @@ def save_samples(pred_affs,
         
 
 
-def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, checkpoint):
+def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, checkpoint, has_background):
     """ Preforms validation over the whole test dataset.
     Args:
         
@@ -112,6 +112,9 @@ def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, chec
 
         thresholds (``list``): 
             The thresholds to use for the agglomeration. 
+
+        has_background (``bool``):
+            If the data to be validated on has background to be predicted.
     """
 
     pred_aff_ds = pipeline.get_predictions()
@@ -147,7 +150,8 @@ def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, chec
         curr_segmentation, fragments, boundary, distance = \
             agglomerate(pred_aff[channel],
                         thresholds=thresholds,
-                        is_2d=is_2d)
+                        is_2d=is_2d,
+                        has_background=has_background)
 
         original_fragments = fragments.copy()
         hist_per_thresh = np.zeros(len(thresholds), dtype=object)
