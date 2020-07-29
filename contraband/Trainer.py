@@ -148,6 +148,9 @@ class Trainer:
 
 
     def _seg_train_loop(self, model, pipeline_params, model_params, pipeline, curr_log_dir, seg_comb_dir):
+        if 'baseline' in pipeline_params and pipeline_params["baseline"]:
+            open(os.path.join(curr_log_dir, "contrastive/checkpoints", "baseline_checkpoint_0"), 'a') 
+
         for checkpoint in utils.get_checkpoints(os.path.join(curr_log_dir, 
                                                 "contrastive/checkpoints"),
                                                 match='checkpoint',
@@ -164,7 +167,16 @@ class Trainer:
                                           pipeline_params['seg_out_channels'])
 
             volume_net = SegmentationVolumeNet(model, seg_head)
-            volume_net.load_base_encoder(os.path.join(curr_log_dir, 'contrastive/checkpoints', checkpoint))
+            if 'baseline' not in pipeline_params or not pipeline_params['baseline']:
+                self.root_logger.info("Loading contrastive model...")
+                volume_net.load_base_encoder(os.path.join(curr_log_dir, 'contrastive/checkpoints', checkpoint))
+            elif pipeline_params["freeze_base"]:
+                self.root_logger.info("Freezing base") 
+                for param in volume_net.base_encoder.parameters():
+                    param.requires_grad = False
+            else:
+                self.root_logger.info("Not freezing baseline...")
+            print([param.requires_grad for param in volume_net.parameters()])
 
             print("Model's state_dict:")
             for param_tensor in volume_net.state_dict():
