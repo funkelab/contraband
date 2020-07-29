@@ -67,10 +67,11 @@ def agglomerate_with_waterz(affs,
                             merge_function='median_aff',
                             init_with_max=True,
                             return_merge_history=False,
-                            return_region_graph=False):
+                            return_region_graph=False,
+                            has_background=None):
 
     print("Extracting initial fragments...")
-    fragments, affs_xy, distances = watershed(affs, 'maxima_distance')
+    fragments, affs_xy, distances = watershed(affs, 'maxima_distance', has_background)
 
     print("Agglomerating with %s", merge_function)
 
@@ -98,7 +99,7 @@ def agglomerate_with_waterz(affs,
     )
 
 
-def agglomerate(affs, thresholds, is_2d):
+def agglomerate(affs, thresholds, is_2d, has_background):
 
     thresholds = list(thresholds)
 
@@ -112,7 +113,8 @@ def agglomerate(affs, thresholds, is_2d):
     start = time.time()
     segmentation, fragments, affs_xy, distances = \
         agglomerate_with_waterz(affs, thresholds,
-                                return_merge_history=True)
+                                return_merge_history=True,
+                                has_background=has_background)
     print("Finished agglomeration in " + str(time.time() - start) + "s")
     return segmentation, fragments, affs_xy, distances
 

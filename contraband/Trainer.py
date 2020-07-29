@@ -228,4 +228,5 @@ class Trainer:
 
                 validate(volume_net, pipeline, pipeline_params['data_file'], 
                          pipeline_params['dataset']['validate'], checkpoint_log_dir,
-                         pipeline_params['thresholds'], checkpoint.split('_')[2])
+                         pipeline_params['thresholds'], checkpoint.split('_')[2],
+                         has_background=pipeline_params['has_background'])

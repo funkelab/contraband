@@ -47,7 +47,7 @@ def get_seeds(boundary, method='grid', next_id=1):
     return seeds, num_seeds
 
 
-def watershed(affs, seed_method, curr_log_dir=''):
+def watershed(affs, seed_method, has_background=True, curr_log_dir=''):
 
     affs_xy = 1.0 - 0.5 * (affs[1] + affs[2])
     depth = affs_xy.shape[0]
@@ -65,6 +65,10 @@ def watershed(affs, seed_method, curr_log_dir=''):
 
         if seed_method == 'maxima_distance':
             seeds, num_seeds, distance = seed_data
+            if has_background:
+                background_point = np.argmin(distance, axis=1)
+                num_seeds += 1
+                seeds[background_point] = num_seeds
             distances[z] = distance
         else:
             seeds, num_seeds = seed_data
