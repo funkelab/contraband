@@ -84,12 +84,12 @@ class Trainer:
         mapping.map_model_params(self.model_params[index])
 
         model = self.model_params[index]['model']
-        model.make_model(self.model_params[index])
 
         pipeline = mapping.map_pipeline(self.mode, self.pipeline)
         if self.mode == 'contrastive':
             utils.log_params(curr_log_dir, index, self.root_handler, self.contrastive_params)
             mapping.map_params(self.contrastive_params[index])
+            model.make_model(self.model_params[index])
             self._contrastive_train_loop(model,
                                          self.contrastive_params[index], 
                                          self.model_params[index],
@@ -103,6 +103,7 @@ class Trainer:
 
                 utils.log_params(seg_comb_dir, i, self.root_handler, self.seg_params)
 
+                model.make_model(self.model_params[index])
                 self._seg_train_loop(model,
                                      seg_comb,
                                      self.model_params[index], 
@@ -116,6 +117,7 @@ class Trainer:
 
                 mapping.map_params(self.seg_params[i])
 
+                model.make_model(self.model_params[index])
                 self._validate(model,
                                seg_comb,
                                self.model_params[index],
@@ -167,6 +169,7 @@ class Trainer:
                                           pipeline_params['seg_out_channels'])
 
             volume_net = SegmentationVolumeNet(model, seg_head)
+            print([param.requires_grad for param in volume_net.parameters()])
             if 'baseline' not in pipeline_params or not pipeline_params['baseline']:
                 self.root_logger.info("Loading contrastive model...")
                 volume_net.load_base_encoder(os.path.join(curr_log_dir, 'contrastive/checkpoints', checkpoint))
