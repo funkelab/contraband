@@ -22,6 +22,7 @@ def save_samples(pred_affs,
                  fragments,
                  boundarys,
                  distances,
+                 seeds,
                  history,
                  threshold,
                  curr_log_dir,
@@ -31,7 +32,7 @@ def save_samples(pred_affs,
     roi = labels_dataset.roi
     if is_2d:
         voxel_size = (1, *voxel_size)
-        roi = daisy.Roi((1, *roi.get_offset()), (1, *roi.get_shape()))
+        roi = daisy.Roi((0, *roi.get_offset()), (1, *roi.get_shape()))
         labels = labels[np.newaxis]
         segmentation = segmentation[np.newaxis]
 
@@ -80,6 +81,13 @@ def save_samples(pred_affs,
                     roi=distances.shape,
                     voxel_size=voxel_size,
                     fit_voxel=True) 
+
+    utils.save_zarr(seeds,
+                    zarr_file,
+                    ds='seeds',
+                    roi=seeds.shape,
+                    voxel_size=voxel_size,
+                    fit_voxel=True) 
     
     seg.data[:] = segmentation
     gt.data[:] = labels
@@ -126,14 +134,6 @@ def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, chec
     labels_dataset = daisy.open_ds(data_file, dataset['gt'], 'r')
     labels = np.array(labels_dataset.data).astype(np.uint64)
    
-    best_threshold = None
-    best_seg = np.zeros(labels.shape[len(labels.shape) - pred_aff_ds.roi.dims():])
-    best_fragments = np.zeros(labels.shape[len(labels.shape) - pred_aff_ds.roi.dims():])
-    best_dist = np.zeros(labels.shape[len(labels.shape) - pred_aff_ds.roi.dims():])
-    best_boundary = np.zeros(labels.shape[len(labels.shape) - pred_aff_ds.roi.dims():])
-    best_history = None
-    best_channel = -1 
-
     logging.info("Thresholds: {thresholds}")
     metrics = {threshold: {'voi_split': [], 
                            'voi_merge': [], 
@@ -145,23 +145,17 @@ def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, chec
     if num_channels == 1:
         labels = labels[np.newaxis]
     # pick large value to start
-    best_voi_sum = 10000 
     for channel in range(num_channels):
-        curr_segmentation, fragments, boundary, distance = \
+        curr_segmentation, fragments, boundary, distance, seeds = \
             agglomerate(pred_aff[channel],
                         thresholds=thresholds,
                         is_2d=is_2d,
                         has_background=has_background)
 
-        original_fragments = fragments.copy()
-        hist_per_thresh = np.zeros(len(thresholds), dtype=object)
-        segs_per_thresh = np.zeros((len(thresholds), *best_seg.shape))
         threshold = 0
         for segmentation in curr_segmentation:
             
             logger.info(f"Agglomeration: {segmentation[0].shape}")
-            segs_per_thresh[threshold] = segmentation[0]
-            hist_per_thresh[threshold] = segmentation[1]
 
             logger.info(f"Labels: {labels[channel].shape}")
             label = labels[channel]
@@ -176,40 +170,42 @@ def validate(model, pipeline, data_file, dataset, curr_log_dir, thresholds, chec
         
             threshold += 1
 
-        min_curr_voi = 10000
-        min_curr_threshold = None
-        for threshold, metric in metrics.items():
-            if metric['voi_sum'][channel] < min_curr_voi:
-                min_curr_voi = metric['voi_sum'][channel]
-                min_curr_threshold = threshold
-
-        if min_curr_voi < best_voi_sum:
-            best_threshold = min_curr_threshold
-            best_seg = np.array(segs_per_thresh[thresholds.index(min_curr_threshold)])
-            best_fragments = original_fragments
-            best_boundary = boundary
-            best_dist = distance
-            best_history = hist_per_thresh[:thresholds.index(min_curr_threshold)]
-            best_channel = channel
-            best_voi_sum = min_curr_voi
-
-
     averaged_metrics = {threshold: {metric: sum(total) / labels.shape[0]
                         for metric, total in metrics_per_threshold.items()}
                         for threshold, metrics_per_threshold in metrics.items()}
     logger.info(f"averaged_metrics: {averaged_metrics}")
+    
+    # Get sample from best threshold
+    best_index = np.argmin([metric['voi_sum'] for metric in averaged_metrics.values()])
+    best_threshold = thresholds[best_index]
+    print(f'best_index: {best_index}') 
+    print(f"best_thresh: {best_threshold}")
+
+    sample_channel = 0
+    segmentation, fragments, best_boundary, best_dist, best_seeds = \
+        agglomerate(pred_aff[sample_channel],
+                    thresholds=[best_threshold],
+                    is_2d=is_2d,
+                    has_background=has_background)
+    best_fragments = fragments.copy()
+    # Should only happen once
+    for seg in segmentation:
+        best_seg = seg[0][sample_channel]
+        best_history = seg[1]
+
     os.makedirs(os.path.join(curr_log_dir, "metrics"), exist_ok=True)
     metrics_file = os.path.join(curr_log_dir, "metrics", 'metrics_' + checkpoint + '.csv')
     pd.DataFrame.from_dict(averaged_metrics, orient='index').to_csv(metrics_file)
     
-    save_samples(pred_aff[best_channel],
+    save_samples(pred_aff[sample_channel],
                  pred_aff_ds,
                  best_seg,
-                 labels[best_channel],
+                 labels[sample_channel],
                  labels_dataset,
                  best_fragments,
                  best_boundary,
                  best_dist,
+                 best_seeds,
                  best_history,
                  best_threshold,
                  curr_log_dir,

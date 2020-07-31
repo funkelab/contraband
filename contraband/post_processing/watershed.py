@@ -2,7 +2,6 @@ import numpy as np
 import mahotas
 from scipy import ndimage
 from contraband import utils
-import os
 
 use_mahotas_watershed = True
 seed_distance = 10
@@ -57,6 +56,7 @@ def watershed(affs, seed_method, has_background=True, curr_log_dir=''):
 
     next_id = 1
     distances = np.zeros_like(affs_xy) 
+    seeds_list = np.zeros_like(affs_xy)
     for z in range(depth):
 
         seed_data = get_seeds(affs_xy[z],
@@ -66,10 +66,19 @@ def watershed(affs, seed_method, has_background=True, curr_log_dir=''):
         if seed_method == 'maxima_distance':
             seeds, num_seeds, distance = seed_data
             if has_background:
-                background_point = np.argmin(distance, axis=1)
-                num_seeds += 1
-                seeds[background_point] = num_seeds
+                min_dist = np.min(distance)
+                lowest = np.array(np.where(distance == min_dist))
+                chosen_points = np.random.choice(np.arange(0, lowest.shape[1]), 20)
+                background_points = np.take(lowest, chosen_points, axis=1)
+                background_points = tuple(background_points[i] for i in range(len(seeds.shape)))
+
+                num_seeds += 1 + next_id 
+                print(f'background_point {background_points}')
+                print(f"num_seeds {num_seeds}")
+                print(f"max_seed {np.max(seeds)}")
+                seeds[background_points] = num_seeds
             distances[z] = distance
+            seeds_list[z] = seeds
         else:
             seeds, num_seeds = seed_data
 
@@ -82,4 +91,4 @@ def watershed(affs, seed_method, has_background=True, curr_log_dir=''):
 
         next_id += num_seeds
 
-    return fragments, affs_xy, distances
+    return fragments, affs_xy, distances, seeds_list
