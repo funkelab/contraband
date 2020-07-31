@@ -12,14 +12,11 @@ if __name__ == '__main__':
     parser.add_argument('-exp')
     parser.add_argument('-checkpoints',
                         nargs='+')
-    parser.add_argument('--fullpath')
+    parser.add_argument('--ignore',
+                        nargs='+')
     args = vars(parser.parse_args())
 
-    if args['fullpath'] is not None:
-        split = args['fullpath'].split('-')
-        exp = split[0]
-    else:
-        exp = args['exp']
+    exp = args['exp']
 
     dataset = args['dataset']
     datasets = ['fluo', '17_A1']
@@ -29,6 +26,10 @@ if __name__ == '__main__':
     checkpoints = []
     if 'checkpoints' in args:
         checkpoints = args['checkpoints']
+
+    folders_to_ignore = []
+    if 'ignore' in args:
+        folders_to_ignore = args['ignore']
     
     expirement_dir = [
         filename
@@ -42,7 +43,8 @@ if __name__ == '__main__':
     data = {} 
     for root, subdir, files in os.walk(logdir, topdown=False):
         dirs = root.split('/')
-        if dirs[-1] == 'metrics':
+        if dirs[-1] == 'metrics' and (folders_to_ignore is None or dirs[-2] not in folders_to_ignore):
+            print(dirs)
             seg_ckpts = {}
             contrastive_comb = dirs[3]
             seg_comb = dirs[5]
@@ -55,13 +57,11 @@ if __name__ == '__main__':
                 seg_ckpt = f.split('_')[1][:-4]
                 metrics = pd.read_csv(os.path.join(root, f), index_col=0)
                 seg_metrics = metrics[metrics.voi_sum == metrics.voi_sum.min()]
-                print(seg_metrics.index.values)
                 for index in seg_metrics.index.values:
                     data[(contrastive_comb, seg_comb, contrastive_ckpt, seg_ckpt, index)] = seg_metrics.loc[index].to_dict()
     df = pd.DataFrame(data).transpose()
     df.index.names = ["contrastive_comb", "seg_comb", "contrastive_ckpt", "seg_ckpt", "threshold"]
     df.to_csv(os.path.join(logdir, "best_metrics.csv"))
-    print(df.transpose())
         
 
 
