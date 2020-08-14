@@ -8,8 +8,16 @@ from contraband.validate import validate
 import contraband.param_mapping as mapping
 import contraband.utils as utils
 from contraband.pipelines.prediction import Predict
+from contraband.pipelines.save_embs import SaveEmbs
+from contraband.models.placeholder import Placeholder
+from contraband.segmentation_heads.sparse_seg_head import SparseSegHead
 import numpy as np
 from pprint import pformat
+
+import logging
+logging.basicConfig(level=logging.INFO)
+logging.getLogger("gunpowder.nodes.elastic_augment").setLevel(logging.INFO)
+
 
 class Trainer:
     def __init__(self, dataset, expirement_num, mode, checkpoints):
@@ -41,6 +49,8 @@ class Trainer:
         self.contrastive_combs = len(self.contrastive_params)
         self.seg_params = mapping.generate_param_grid(self.params['seg'])
         self.model_params = self.params['model'] 
+        if 'save_embs' in self.params:
+            self.embedding_params = self.params['save_embs']
 
         # Get correct combinations of parameters
         index_combs = {"contrastive": self.contrastive_params, "model": self.model_params}
@@ -73,7 +83,6 @@ class Trainer:
         self.train_one(index)
 
     def train_one(self, index):
-
         curr_log_dir = os.path.join(self.logdir, "combination-" + str(index))
 
         utils.log_params(curr_log_dir, 
@@ -97,31 +106,49 @@ class Trainer:
                                          curr_log_dir)
         elif self.mode == 'seg':
             for i, seg_comb in enumerate(self.seg_params):
+
+                # If we are using the K1By1 model then we don't want the Unet attached.
+                if seg_comb['seg_head'] == 'Sparse' and ('baseline' not in seg_comb or not seg_comb['baseline']):
+                    model = Placeholder()
+                model.make_model(self.model_params[index])
+
                 mapping.map_params(self.seg_params[i])
                 seg_comb_dir = os.path.join(curr_log_dir, "seg/combination-" + str(i))
                 os.makedirs(seg_comb_dir, exist_ok=True)
 
                 utils.log_params(seg_comb_dir, i, self.root_handler, self.seg_params)
 
-                model.make_model(self.model_params[index])
                 self._seg_train_loop(model,
                                      seg_comb,
                                      self.model_params[index], 
                                      pipeline,
                                      curr_log_dir,
                                      seg_comb_dir)
-        else:
+        elif self.mode == 'val':
             for i, seg_comb in enumerate(self.seg_params):
+                # If we are using the K1By1 model then we don't want the Unet attached.
+                if seg_comb['seg_head'] == 'Sparse' and ('baseline' not in seg_comb or not seg_comb['baseline']):
+                    model = Placeholder()
+                model.make_model(self.model_params[index])
+
                 seg_comb_dir = os.path.join(curr_log_dir, "seg/combination-" + str(i))
                 utils.log_params(seg_comb_dir, i, self.root_handler, self.seg_params)
 
                 mapping.map_params(self.seg_params[i])
 
-                model.make_model(self.model_params[index])
                 self._validate(model,
                                seg_comb,
                                self.model_params[index],
                                seg_comb_dir)
+        elif self.mode == 'emb':
+            print("EMB")
+            utils.log_params(curr_log_dir, index, self.root_handler, self.contrastive_params)
+            utils.log_params(curr_log_dir, index, self.root_handler, self.seg_params)
+            mapping.map_params(self.contrastive_params[index])
+            model.make_model(self.model_params[index])
+
+            self._embed(model, self.contrastive_params[index], self.model_params, curr_log_dir)
+
 
     def _contrastive_train_loop(self, model, pipeline_params, model_params, pipeline, curr_log_dir):
         pipeline = pipeline(pipeline_params, curr_log_dir)
@@ -170,10 +197,10 @@ class Trainer:
 
             volume_net = SegmentationVolumeNet(model, seg_head)
             print([param.requires_grad for param in volume_net.parameters()])
-            if 'baseline' not in pipeline_params or not pipeline_params['baseline']:
+            if ('baseline' not in pipeline_params or not pipeline_params['baseline']) and model.name != "Placeholder":
                 self.root_logger.info("Loading contrastive model...")
                 volume_net.load_base_encoder(os.path.join(curr_log_dir, 'contrastive/checkpoints', checkpoint))
-            elif pipeline_params["freeze_base"]:
+            elif  model.name != "Placeholder" and pipeline_params["freeze_base"]:
                 self.root_logger.info("Freezing base") 
                 for param in volume_net.base_encoder.parameters():
                     param.requires_grad = False
@@ -200,7 +227,6 @@ class Trainer:
                         np.save(history_path, loss, allow_pickle=True)
                         curr_loss = []
 
-
     def _validate(self, model, pipeline_params, model_params, curr_log_dir):
 
         for contrastive_ckpt in utils.get_checkpoints(curr_log_dir, match='ckpt',
@@ -225,7 +251,23 @@ class Trainer:
 
                 volume_net.load_base_encoder(os.path.join(checkpoint_log_dir, 'checkpoints', checkpoint))
                 volume_net.load_seg_head(os.path.join(checkpoint_log_dir, 'checkpoints', checkpoint))
+                if model.out_shape is None:
+                    seg_head.eval([1, model_params["h_channels"], *model_params["in_shape"]])
+                else:
+                    seg_head.eval()
                 volume_net.eval()
+            
+                # If we are using embedings as input,
+                # modify 'data_file' param. 
+                if model.name == "Placeholder":
+                    # Going back 2 dirs from curr_log_dir
+                    # gets us to the dir containing 'embs'
+                    pipeline_params["embs_file"] = os.path.join(
+                        *curr_log_dir.split('/')[:-2],
+                        "embs",
+                        contrastive_ckpt,
+                        "validate",
+                        "raw_embs.zarr")
 
                 pipeline = Predict(volume_net, pipeline_params, checkpoint_log_dir)
 
@@ -233,3 +275,23 @@ class Trainer:
                          pipeline_params['dataset']['validate'], checkpoint_log_dir,
                          pipeline_params['thresholds'], checkpoint.split('_')[2],
                          has_background=pipeline_params['has_background'])
+
+    def _embed(self, model, pipeline_params, model_params, curr_log_dir):
+
+        for checkpoint in utils.get_checkpoints(os.path.join(curr_log_dir, 
+                                                "contrastive/checkpoints"),
+                                                match='checkpoint',
+                                                white_list=self.checkpoints):
+            checkpoint_log_dir = os.path.join(curr_log_dir, 
+                                              'embs/contrastive_ckpt' +
+                                              checkpoint.split('_')[2]) 
+            os.makedirs(checkpoint_log_dir, exist_ok=True)
+
+            utils.load_model(model, 
+                             "base_encoder.", 
+                             os.path.join(curr_log_dir, 'contrastive/checkpoints', checkpoint),
+                             freeze_model=True)
+
+            for ds in self.embedding_params["datasets"]:
+                pipeline = SaveEmbs(model, pipeline_params, ds, self.embedding_params["data_file"][0], checkpoint_log_dir).save_embs()
+

@@ -6,7 +6,6 @@ from contraband.models.ContrastiveVolumeNet import (
     ContrastiveVolumeNet)
 from contraband.utils import load_model, get_output_shape
 
-
 class Unet(torch.nn.Module):
     def __init__(self):
         super().__init__()

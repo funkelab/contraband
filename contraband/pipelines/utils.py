@@ -110,12 +110,16 @@ class InspectBatch(gp.BatchFilter):
 
     def __init__(self, prefix):
         self.prefix = prefix
+    
+    def prepare(self, request):
+        for key, v in request.items():
+            print(f"{self.prefix} ======== {key} ROI: {self.spec[key].roi}")
 
     def process(self, batch, request):
         for key, array in batch.arrays.items():
             print(f"{self.prefix} ======== {key}: {array.data.shape} ROI: {array.spec.roi}")
         for key, graph in batch.graphs.items():
-            print(f"{self.prefix} ======== {key}: {graph}")
+            print(f"{self.prefix} ======== {key}: {graph.spec.roi} {graph}")
 
 
 class RemoveChannelDim(gp.BatchFilter):
@@ -144,53 +148,80 @@ class RemoveChannelDim(gp.BatchFilter):
 
 class RemoveSpatialDim(gp.BatchFilter):
 
-    def __init__(self, array):
-        self.array = array
+    def __init__(self, key):
+        self.key = key
 
     def setup(self):
 
-        upstream_spec = self.get_upstream_provider().spec[self.array]
+        upstream_spec = self.get_upstream_provider().spec[self.key]
 
         spec = upstream_spec.copy()
         if spec.roi is not None:
             spec.roi = gp.Roi(
                 self.__remove_dim(spec.roi.get_begin()),
                 self.__remove_dim(spec.roi.get_shape()))
-        if spec.voxel_size is not None:
-            spec.voxel_size = self.__remove_dim(spec.voxel_size)
-        self.spec[self.array] = spec
-        self.updates(self.array, self.spec[self.array])
+
+        if isinstance(self.key, gp.ArrayKey):
+            if spec.voxel_size is not None:
+                spec.voxel_size = self.__remove_dim(spec.voxel_size)
+
+        self.spec[self.key] = spec
+        self.updates(self.key, self.spec[self.key])
 
     def prepare(self, request):
 
-        if self.array not in request:
+        if self.key not in request:
             return
 
-        upstream_spec = self.get_upstream_provider().spec[self.array]
+        upstream_spec = self.get_upstream_provider().spec[self.key]
 
-        request[self.array].roi = gp.Roi(
-            self.__insert_dim(request[self.array].roi.get_begin(), 0),
-            self.__insert_dim(request[self.array].roi.get_shape(), 1))
-        if request[self.array].voxel_size is not None:
-            request[self.array].voxel_size = self.__insert_dim(
-                request[self.array].voxel_size, 1)
+        request[self.key].roi = gp.Roi(
+            self.__insert_dim(request[self.key].roi.get_begin(), 0),
+            self.__insert_dim(request[self.key].roi.get_shape(), 1))
+
+        if isinstance(self.key, gp.ArrayKey):
+            if request[self.key].voxel_size is not None:
+                request[self.key].voxel_size = self.__insert_dim(
+                    request[self.key].voxel_size, 1)
 
     def process(self, batch, request):
-        if self.array not in batch:
+        if self.key not in batch:
             return
-        data = batch[self.array].data
-        shape = data.shape
-        roi = batch[self.array].spec.roi
-        assert shape[-roi.dims()] == 1, "Channel to delete must be size 1," \
-                                       "but given shape " + str(shape)
+        
+        if isinstance(self.key, gp.ArrayKey):
+            data = batch[self.key].data
+            shape = data.shape
+            roi = batch[self.key].spec.roi
+            assert shape[-roi.dims()] == 1, "Channel to delete must be size 1," \
+                                           "but given shape " + str(shape)
 
-        shape = self.__remove_dim(shape, len(shape) - roi.dims()) 
-        batch[self.array].data = data.reshape(shape)
-        batch[self.array].spec.roi = gp.Roi(
+            shape = self.__remove_dim(shape, len(shape) - roi.dims()) 
+            batch[self.key].data = data.reshape(shape)
+            batch[self.key].spec.roi = gp.Roi(
+                    self.__remove_dim(roi.get_begin()),
+                    self.__remove_dim(roi.get_shape()))
+            batch[self.key].spec.voxel_size = \
+                self.__remove_dim(batch[self.key].spec.voxel_size)
+
+        if isinstance(self.key, gp.GraphKey):
+            roi = batch[self.key].spec.roi
+
+            batch[self.key].spec.roi = gp.Roi(
                 self.__remove_dim(roi.get_begin()),
                 self.__remove_dim(roi.get_shape()))
-        batch[self.array].spec.voxel_size = \
-            self.__remove_dim(batch[self.array].spec.voxel_size)
+            
+            graph = gp.Graph([], [], spec=batch[self.key].spec)
+            for node in batch[self.key].nodes:
+                print(node)
+                new_node = gp.Node(node.id, 
+                                   node.location[1:],
+                                   temporary=node.temporary,
+                                   attrs=node.attrs)
+                graph.add_node(new_node)
+                print(node)
+            print(graph.spec.roi)
+            print(list(graph.nodes))
+            batch[self.key] = graph
 
     def __remove_dim(self, a, dim=0):
         return a[:dim] + a[dim + 1:]
@@ -201,7 +232,7 @@ class RemoveSpatialDim(gp.BatchFilter):
 
 class RandomPointGenerator:
 
-    def __init__(self, density, repetitions=1):
+    def __init__(self, density=None, repetitions=1, num_points=None):
         '''Create random points in a provided ROI with the given density.
 
         Args:
@@ -224,6 +255,7 @@ class RandomPointGenerator:
         self.density = density
         self.repetitions = repetitions
         self.iteration = 0
+        self.num_points = num_points
 
     def get_random_points(self, roi):
         '''Get a dictionary mapping point IDs to nD locations, uniformly
@@ -237,7 +269,10 @@ class RandomPointGenerator:
         if self.iteration % self.repetitions == 0:
 
             # create random points in the unit cube
-            self.points = np.random.random((int(self.density * volume), ndims))
+            if self.num_points is None:
+                self.points = np.random.random((int(self.density * volume), ndims))
+            else:
+                self.points = np.random.random((self.num_points, ndims))
             # scale and shift into requested ROI
             self.points *= np.array(roi.get_end() - roi.get_begin())
             self.points += roi.get_begin()
@@ -261,7 +296,8 @@ class RandomPointSource(gp.BatchProvider):
             self,
             graph_key,
             density=None,
-            random_point_generator=None):
+            random_point_generator=None,
+            shrink_by=None):
         '''A source creating uniformly distributed points.
 
         Args:
@@ -295,6 +331,7 @@ class RandomPointSource(gp.BatchProvider):
             self.random_point_generator = RandomPointGenerator(density=density)
         else:
             self.random_point_generator = random_point_generator
+        self.shrink_by = shrink_by
 
     def setup(self):
 
@@ -309,14 +346,26 @@ class RandomPointSource(gp.BatchProvider):
     def provide(self, request):
 
         roi = request[self.graph_key].roi
+        if self.shrink_by is not None:
+            roi = roi / self.shrink_by 
 
         random_points = self.random_point_generator.get_random_points(roi)
 
         batch = gp.Batch()
-        batch[self.graph_key] = gp.Graph(
-            [gp.Node(id=i, location=l) for i, l in random_points.items()],
-            [],
-            gp.GraphSpec(roi=roi))
+        if self.shrink_by is None:
+            batch[self.graph_key] = gp.Graph(
+                [gp.Node(id=i, location=l) for i, l in random_points.items()],
+                [],
+                gp.GraphSpec(roi=roi))
+        else:
+            print(list(random_points.items()))
+            print(list(random_points.values())[0]* np.array(self.shrink_by))
+            # Put graph back into original roi
+            batch[self.graph_key] = gp.Graph(
+                [gp.Node(id=i, location=l)
+                 for i, l in random_points.items()],
+                [],
+                gp.GraphSpec(roi=roi))
 
         return batch
 
@@ -580,3 +629,216 @@ class RandomMultiBranchSource(BatchProvider):
         if isinstance(source, Hdf5LikeSource):
             logger.debug(f"Dataset chosen: {source.datasets}, {self.random_source_generator.iteration}")
         return source.request_batch(request)
+
+class FillLocations(gp.BatchFilter):
+
+    def __init__(
+            self,
+            raw,
+            points,
+            locations,
+            is_2d,
+            max_points=None):
+        self.raw = raw
+        self.points = points
+        self.locations = locations
+        self.is_2d = is_2d
+        self.max_points = max_points
+
+    def setup(self):
+        self.provides(
+            self.locations,
+            gp.ArraySpec(nonspatial=True))
+
+    def process(self, batch, request):
+
+        locations = []
+        # get list of only xy locations
+        # locations are in voxels, relative to output roi
+        points_roi = request[self.points].roi
+        voxel_size = batch[self.raw].spec.voxel_size
+        for i, node in enumerate(batch[self.points].nodes):
+            if self.max_points is not None and i > self.max_points - 1:
+                break
+
+            location = node.location
+            location -= points_roi.get_begin()
+            location /= voxel_size
+            locations.append(location)
+        
+        locations = np.array(locations, dtype=np.float32)
+        print(locations)
+        if self.is_2d:
+            locations = locations[:, 1:]
+
+        # create point location arrays 
+        batch[self.locations] = gp.Array(
+            locations, self.spec[self.locations])
+
+
+class PointsLabelsSource(BatchProvider):
+    '''Read a set of points from a comma-separated-values text file. Each line
+    in the file represents one point.
+
+    Args:
+
+        points (:class: `ArrayKey` or `GraphKey`):
+
+            The key of the points correseponding to the gunpowder array
+            or graph key. If points is an array key it will directly load the given 
+            number of points into the array. If points is a graph key it will
+            provide points in a ROI, in similar functinailty to CSVPointsSource.
+
+        data (:class:`numpy array`):
+            
+            The data correseponding to the points. If points is an ArrayKey,
+            data should be the actual data values (not the point locations). If
+            points is a graphkey the data should be the point locations.
+
+        labels (:class:`ArrayKey`, optional):
+            
+            The gunpowder ArrayKey for the labels for each point.
+
+        label_data (:class: `Numpy Array`, optional):
+
+            The actual label for each point, will be loaded into the labels key.
+
+        num_points (:class: `int`, default=1):
+
+            The number of points to return. If given an array key this will 
+            specify the number of points that will be randomly selected to be 
+            put into the points ArrayKey. If points is a GraphKey it does not 
+            affect the number of points. 
+
+        points_spec (:class:`GraphSpec` or `ArraySpec`, optional):
+
+            An optional :class:`GraphSpec` or :class:`ArraySpec` to overwrite the points specs
+            automatically determined from the points data. This is useful to set
+            the :class:`Roi` manually.
+
+        labels_spec (`ArraySpec`, optional):
+
+            An optional :class:`ArraySpec` to overwrite the labels specs
+            automatically given a voxel size of 1. This is useful to set
+            the voxel_size manually.
+
+        scale (scalar or array-like):
+
+            An optional scaling to apply to the coordinates of the given points data.
+            This is useful if the points refer to voxel positions to convert them to world units.
+    '''
+
+    def __init__(self,
+                 points, 
+                 data, 
+                 labels=None, 
+                 label_data=None, 
+                 num_points=1, 
+                 points_spec=None, 
+                 labels_spec=None, 
+                 scale=None):
+
+        self.points = points
+        self.labels = labels
+        self.data = data
+        self.label_data = label_data
+        self.num_points = num_points
+        self.points_spec = points_spec
+        self.labels_spec = labels_spec
+        self.scale = scale
+        
+        # Apply scale to given data
+        if scale is not None:
+            self.data = self.data * scale
+
+    def setup(self):
+        
+        self.ndims = self.data.shape[1]
+
+        if self.points_spec is not None:
+            self.provides(self.points, self.points_spec)
+        elif isinstance(self.points, gp.ArrayKey):
+            self.provides(self.points, gp.ArraySpec(voxel_size=((1,))))
+        elif isinstance(self.points, gp.GraphKey):
+            print(self.ndims)
+            min_bb = gp.Coordinate(np.floor(np.amin(self.data[:, :self.ndims], 0)))
+            max_bb = gp.Coordinate(np.ceil(np.amax(self.data[:, :self.ndims], 0)) + 1)
+
+            roi = gp.Roi(min_bb, max_bb - min_bb)
+            logger.debug(f"Bounding Box: {roi}")
+
+            self.provides(self.points, gp.GraphSpec(roi=roi))
+
+        if self.labels is not None:
+            assert isinstance(self.labels, gp.ArrayKey), \
+                   f"Label key must be an ArrayKey, \
+                     was given {type(self.labels)}"
+
+            if self.labels_spec is not None:
+                self.provides(self.labels, self.labels_spec)
+            else:
+                self.provides(self.labels, gp.ArraySpec(voxel_size=((1,))))
+
+    def provide(self, request):
+
+        timing = Timing(self)
+        timing.start()
+
+        batch = gp.Batch()
+
+        # If a Array is requested then we will randomly choose
+        # the number of requested points
+        if isinstance(self.points, gp.ArrayKey):
+            points = np.random.choice(self.data.shape[0], self.num_points)
+            data = self.data[points][np.newaxis]
+            if self.scale is not None:
+                data = data * self.scale
+            if self.label_data is not None:
+                labels = self.label_data[points]
+            batch[self.points] = gp.Array(data, self.spec[self.points])
+
+        else:
+            # If a graph is request we must select points within the 
+            # request ROI
+
+            min_bb = request[self.points].roi.get_begin()
+            max_bb = request[self.points].roi.get_end()
+
+            logger.debug(
+                "Points source got request for %s",
+                request[self.points].roi)
+
+            point_filter = np.ones((self.data.shape[0],), dtype=np.bool)
+            for d in range(self.ndims):
+                point_filter = np.logical_and(point_filter, self.data[:, d] >= min_bb[d])
+                point_filter = np.logical_and(point_filter, self.data[:, d] < max_bb[d])
+
+            points_data, labels = self._get_points(point_filter)
+            logger.debug(f"Found {len(points_data)} points")
+            points_spec = gp.GraphSpec(roi=request[self.points].roi.copy())
+            batch.graphs[self.points] = gp.Graph(points_data, [], points_spec)
+        
+        # Labels will always be an Array
+        if self.label_data is not None:
+            batch[self.labels] = gp.Array(labels, self.spec[self.labels])
+
+        timing.stop()
+        batch.profiling_stats.add(timing)
+
+        return batch
+
+    def _get_points(self, point_filter):
+        filtered = self.data[point_filter]
+
+        if self.label_data is not None:
+            filtered_labels = self.labels[point_filter]
+        else:
+            filtered_labels = None
+
+        ids = np.arange(len(self.data))[point_filter]
+
+        return (
+            [gp.Node(id=i, location=p)
+                for i, p in zip(ids, filtered)],
+            filtered_labels
+        )

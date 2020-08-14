@@ -46,11 +46,15 @@ class SegmentationVolumeNet(torch.nn.Module):
         self.base_encoder = base_encoder
         self.seg_head = seg_head
 
-    def forward(self, raw):
+    def forward(self, raw=None, **kwargs):
         h = self.base_encoder(raw)
-        z = self.seg_head(h)
+        z = self.seg_head(h, **kwargs)
 
-        return z, h
+        # When we use just points we can't return the h emb
+        if h is None:
+            return z
+        else: 
+            return z, h
 
     def load_base_encoder(self, checkpoint_file):
         self.base_encoder = load_model(self.base_encoder,

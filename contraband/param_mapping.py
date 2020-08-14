@@ -3,7 +3,10 @@ import math
 import torch
 from contraband.pipelines.Contrastive import Contrastive
 from contraband.pipelines.Segmentation import Segmentation
+from contraband.pipelines.sparse_baseline import SparseBasline
+from contraband.pipelines.sparse_sh import SparseSHTrain
 from contraband.segmentation_heads.SimpleSegHead import SimpleSegHead
+from contraband.segmentation_heads.sparse_seg_head import SparseSegHead
 from contraband.models.Unet import Unet
 from itertools import product
 
@@ -31,6 +34,8 @@ def map_params(params):
     if 'seg_head' in params:
         if params['seg_head'] == 'SimpleSegHead':
             params['seg_head'] = SimpleSegHead
+        if params['seg_head'] == 'Sparse':
+            params['seg_head'] = SparseSegHead
 
     if 'elastic_params' in params and "rotation_interval" in params['elastic_params']:
         for i, dim in enumerate(params['elastic_params']["rotation_interval"]):
@@ -42,6 +47,7 @@ def map_params(params):
 def map_model_params(params):
     if params['model'] == "unet":
         params['model'] = Unet()
+
     # Make downsample_factors tuples, torch complains otherwise
     params['downsample_factors'] = [tuple(factor) for factor in params['downsample_factors']]
 
@@ -55,5 +61,15 @@ def map_pipeline(mode, pipeline):
             return Contrastive
         else:
             return Segmentation
+    elif pipeline == "sparse_sh":
+        if mode == 'contrastive':
+            return Contrastive
+        else:
+            return SparseSHTrain
+    elif pipeline == "baseline_sparse_sh":
+        if mode == 'contrastive':
+            return Contrastive
+        else:
+            return SparseBasline
     else:
         raise ValueError('Incorrect pipeline: ' + pipeline)

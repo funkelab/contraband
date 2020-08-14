@@ -43,7 +43,7 @@ def create_logger(log_dir, name=None, index=None):
         name = 'combination-' + str(index)
 
     logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
+    #logger.setLevel(logging.INFO)
     file_handler = logging.FileHandler(log_dir + '/' + name + ".log")
     formatter = logging.Formatter(
         '%(asctime)s : %(levelname)s : %(name)s : %(message)s')

@@ -8,8 +8,6 @@ from contraband.pipelines.utils import Blur, InspectBatch, RemoveChannelDim, \
     SetDtype, AddChannelDim, RemoveSpatialDim
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
-logging.getLogger("gunpowder.nodes.elastic_augment").setLevel(logging.INFO)
 
 
 class Segmentation():

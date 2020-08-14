@@ -20,8 +20,6 @@ import daisy
 import numpy as np
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
-logging.getLogger("gunpowder.nodes.elastic_augment").setLevel(logging.INFO)
 
 
 class Contrastive():
