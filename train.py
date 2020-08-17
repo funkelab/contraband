@@ -1,10 +1,10 @@
 import argparse
-from contraband.Trainer import Trainer
+from contraband.trainer import Trainer
 
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='Process some integers.')
+    parser = argparse.ArgumentParser()
     parser.add_argument('-dataset')
     parser.add_argument('-exp')
     parser.add_argument('-mode')
@@ -23,7 +23,7 @@ if __name__ == '__main__':
     dataset = args['dataset']
     datasets = ['fluo', '17_A1']
     if dataset not in datasets:
-        raise ValueError("invalid model name")
+        raise ValueError("invalid dataset name")
 
     index = None
     try:

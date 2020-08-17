@@ -15,7 +15,7 @@ import zarr
 logger = logging.getLogger(__name__)
 
 
-class SparseSHTrain():
+class SparseSH():
     def __init__(self, params, logdir, log_every=1):
         """
             Trains the SparseSegHead on precalculated embeddings and pre chosen 
@@ -52,7 +52,7 @@ class SparseSHTrain():
         # Num points refers to number of total points, but when doing
         # FG/BG prediction half will be pos and half will be neg
         self.num_points = int(self.params['num_points'] / 2)
-
+        
         self.pos_points = pos["point"][:self.num_points].tolist()
         self.pos_gt = pos["gt"][:self.num_points].tolist()
         self.neg_points = neg['point'][:self.num_points].tolist()
@@ -60,6 +60,7 @@ class SparseSHTrain():
 
         # (samples, embedding channels, y, x)
         is_2d = len(embs.shape) == 4
+        # Here we will select the embeddings for each point.
         if is_2d:
             self.pos_data = np.array([
                 embs[(point[0], slice(None), *point[1:])]
@@ -80,8 +81,8 @@ class SparseSHTrain():
         self.data = np.concatenate((self.pos_data, self.neg_data))
         self.labels = np.concatenate((self.pos_gt, self.neg_gt))
 
-        logger.info("data shape", self.data.shape)
-        logger.info("labels shape", self.labels.shape)
+        logger.info(f"data shape, {self.data.shape}")
+        logger.info(f"labels shape, {self.labels.shape}")
         self.loss = PointLoss(torch.nn.CrossEntropyLoss())
 
     def create_train_pipeline(self, model):
@@ -92,6 +93,7 @@ class SparseSHTrain():
         gt_labels = gp.ArrayKey('LABELS')
 
         request = gp.BatchRequest()
+        # Because of PointsLabelsSource we can keep everything as nonspatial
         request[points] = gp.ArraySpec(nonspatial=True)
         request[predictions] = gp.ArraySpec(nonspatial=True)
         request[gt_labels] = gp.ArraySpec(nonspatial=True)

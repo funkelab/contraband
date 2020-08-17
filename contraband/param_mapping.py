@@ -1,14 +1,15 @@
 # Math is not actually unsed
 import math
 import torch
-from contraband.pipelines.Contrastive import Contrastive
-from contraband.pipelines.Segmentation import Segmentation
+from contraband.pipelines.contrastive import Contrastive
+from contraband.pipelines.segmentation import Segmentation
 from contraband.pipelines.sparse_baseline import SparseBasline
-from contraband.pipelines.sparse_sh import SparseSHTrain
-from contraband.segmentation_heads.SimpleSegHead import SimpleSegHead
+from contraband.pipelines.sparse_sh import SparseSH
+from contraband.segmentation_heads.simple_seg_head import SimpleSegHead
 from contraband.segmentation_heads.sparse_seg_head import SparseSegHead
-from contraband.models.Unet import Unet
+from contraband.models.unet import Unet
 from itertools import product
+
 
 def generate_param_grid(params):
     return [
@@ -18,6 +19,11 @@ def generate_param_grid(params):
 
 
 def map_params(params):
+    """
+        Maps pipeline parameters to the objects they should
+        represet.
+        Ex: optimizer -> torch optimizer module
+    """
     if params['optimizer'] == 'adam':
         kwargs = {}
         if 'lr' in params:
@@ -45,6 +51,9 @@ def map_params(params):
 
 
 def map_model_params(params):
+    """
+        Maps the model parameters.
+    """
     if params['model'] == "unet":
         params['model'] = Unet()
 
@@ -56,6 +65,10 @@ def map_model_params(params):
 
 
 def map_pipeline(mode, pipeline):
+    """
+        Returns the correct pipelines based on pipeline
+        asked for.
+    """
     if pipeline == "standard":
         if mode == 'contrastive':
             return Contrastive
@@ -65,7 +78,7 @@ def map_pipeline(mode, pipeline):
         if mode == 'contrastive':
             return Contrastive
         else:
-            return SparseSHTrain
+            return SparseSH
     elif pipeline == "baseline_sparse_sh":
         if mode == 'contrastive':
             return Contrastive

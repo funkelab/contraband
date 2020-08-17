@@ -4,6 +4,7 @@ import logging
 import numpy as np
 import daisy
 
+
 def load_model(model, prefix, checkpoint_file, freeze_model=False):
     """Loads the model from the given checkpoint and prefix.
 
@@ -27,6 +28,9 @@ def load_model(model, prefix, checkpoint_file, freeze_model=False):
     n_clip = len(prefix)
     adapted_dict = {k[n_clip:]: v for k, v in loaded_dict.items() 
                     if k.startswith(prefix)}
+    # We never want to load the projection_head
+    # GP will take care of loading contrastive model when
+    # resuming training
     adapted_dict = {k: v for k, v in adapted_dict.items() 
                     if not k.startswith("projection_head")}
     model.load_state_dict(adapted_dict)
@@ -43,7 +47,6 @@ def create_logger(log_dir, name=None, index=None):
         name = 'combination-' + str(index)
 
     logger = logging.getLogger(name)
-    #logger.setLevel(logging.INFO)
     file_handler = logging.FileHandler(log_dir + '/' + name + ".log")
     formatter = logging.Formatter(
         '%(asctime)s : %(levelname)s : %(name)s : %(message)s')
@@ -53,10 +56,37 @@ def create_logger(log_dir, name=None, index=None):
 
 
 def get_output_shape(model, image_dim):
+    """
+        Helper function to find the output shape of models
+    """
     return model(torch.rand(*(image_dim))).data.shape
 
 
 def get_checkpoints(path, match=None, white_list=[]):
+    """
+        Gets the checkpoints in the given directory
+
+        Args:
+            
+            path (`string`):
+
+                The dir to look for checkpoints in.
+
+            match (`string`):
+                
+                The string to match checkpoints on. 
+                Ex: given 'ckpt', it will return any file containing 'ckpt'
+                If not given all files with be returned
+
+            white_list: (`list`):
+
+                If match is given, then whitelist will only return files
+                that contain a string in this list. This is useful to only
+                ask for certain checkpoints.
+
+                Ex: you only want checkpoints 1 and 3, then checkpoint 2 will
+                be skiped if given a list of [1, 3].
+    """
     print(path)
     if match is None:
         checkpoints = [filename for filename in os.listdir(path)]
@@ -73,6 +103,9 @@ def get_checkpoints(path, match=None, white_list=[]):
 
 
 def get_history(path):
+    """
+        Loads the loss history of the given dir.
+    """
     if os.path.isfile(path):
         history = np.load(path)
         start_idx = history.shape[0]
@@ -83,6 +116,50 @@ def get_history(path):
 
 def save_zarr(data, zarr_file, ds, roi, voxel_size=(1, 1, 1), 
               num_channels=1, dtype=None, fit_voxel=False):
+    """
+        Helper function to save_zarr files using daisy.
+
+        Args:
+            
+            data (`numpy array`):
+
+                The data that you want to save.
+
+            zarr_file (`string`):
+
+                The zarr file you want to save to.
+
+            ds (`string`):
+
+                The dataset that the data should be saved as.
+
+            roi (`daisy.Roi` or `list-like`):
+
+                The roi to save the datset as.
+
+            voxel_size (`tuple`, default=(1, 1, 1)):
+
+                The voxel size to save the dataset as.
+
+            num_channels (`int`, default=1):
+
+                How many channels the data has. 
+                Note: Daisy only supports saving zarrs with a single
+                channel dim, so (num_channels, roi) is the only possible
+                shape of the data.
+
+            dtype (`numpy dtype`, optional):
+                
+                The datatype to save the data as
+
+            fit_voxel (`bool`):
+                
+                If true then the roi will be multiplied by the voxel_size.
+                This is useful if the ROI is in unit voxels and you want it
+                to be in world units.
+
+
+    """
     if not isinstance(roi, daisy.Roi):   
         roi = daisy.Roi([0 for d in range(len(roi))],
                         roi)
@@ -106,6 +183,9 @@ def save_zarr(data, zarr_file, ds, roi, voxel_size=(1, 1, 1),
 
 
 def log_params(curr_log_dir, index, root_handler, params):
+    """
+        Logs the parameters given.
+    """
     logger = create_logger(curr_log_dir, index=index)
     logger.addHandler(root_handler)
 

@@ -10,27 +10,42 @@ import copy
 import logging
 logger = logging.getLogger(__name__)
 
-class SetDtype(gp.BatchFilter):
 
-    def __init__(self, array, dtype):
-        self.array = array
+class SetDtype(gp.BatchFilter):
+    """
+       Set the datatype of a Array or Graph with the given type.
+
+       Args:
+            
+            key (:class: `ArrayKey` or `GraphKey`):
+
+                The key to modify
+
+            dtype (:class: `Numpy Dtype`):
+
+                The dtype to change to.
+                
+    """
+
+    def __init__(self, key, dtype):
+        self.key = key
         self.dtype = dtype
 
     def setup(self):
         self.enable_autoskip()
-        spec = self.spec[self.array].copy()
+        spec = self.spec[self.key].copy()
         spec.dtype = self.dtype
-        self.updates(self.array, spec) 
+        self.updates(self.key, spec) 
 
     def prepare(self, request):
         deps = gp.BatchRequest()
-        deps[self.array] = request[self.array].copy()
+        deps[self.key] = request[self.key].copy()
         return deps
 
     def process(self, batch, request):
-        array = batch.arrays[self.array]
-        array.data = array.data.astype(self.dtype)
-        array.spec.dtype = self.dtype
+        data = batch[self.key]
+        data.data = data.data.astype(self.dtype)
+        data.spec.dtype = self.dtype
 
 
 class Blur(gp.BatchFilter):
@@ -98,7 +113,6 @@ class Blur(gp.BatchFilter):
             sigma = [0 for dim in range(len(raw.data.shape) - roi.dims())] \
                 + self.sigma 
 
-
         raw.data = filters.gaussian(raw.data, sigma=sigma,
                                     mode='constant', preserve_range=True,
                                     multichannel=False)
@@ -117,12 +131,25 @@ class InspectBatch(gp.BatchFilter):
 
     def process(self, batch, request):
         for key, array in batch.arrays.items():
-            print(f"{self.prefix} ======== {key}: {array.data.shape} ROI: {array.spec.roi}")
+            print(f"{self.prefix} ======== {key}: SHAPE: {array.data.shape} ROI: {array.spec.roi}")
         for key, graph in batch.graphs.items():
-            print(f"{self.prefix} ======== {key}: {graph.spec.roi} {graph}")
+            print(f"{self.prefix} ======== {key}: ROI: {graph.spec.roi} GRAPH: {graph}")
 
 
 class RemoveChannelDim(gp.BatchFilter):
+    """
+        Squeezes the specified channel dim from the array.
+
+        Args:
+            
+            array (:class: `ArrayKey`):
+
+                The Array to remove a dim from.
+
+            axis (:class: `int`):
+                 
+                The axis to remove, must be of size 1.
+    """
 
     def __init__(self, array, axis=0):
         self.array = array
@@ -147,6 +174,11 @@ class RemoveChannelDim(gp.BatchFilter):
         return a[:dim] + a[dim + 1:]
 
 class RemoveSpatialDim(gp.BatchFilter):
+    """
+        Squeezes the first spatial dim from an array or a graph.
+        Will modify request for an extra spatial dim in order to satisfy the
+        removal.
+    """
 
     def __init__(self, key):
         self.key = key
@@ -172,8 +204,6 @@ class RemoveSpatialDim(gp.BatchFilter):
 
         if self.key not in request:
             return
-
-        upstream_spec = self.get_upstream_provider().spec[self.key]
 
         request[self.key].roi = gp.Roi(
             self.__insert_dim(request[self.key].roi.get_begin(), 0),
@@ -296,8 +326,7 @@ class RandomPointSource(gp.BatchProvider):
             self,
             graph_key,
             density=None,
-            random_point_generator=None,
-            shrink_by=None):
+            random_point_generator=None):
         '''A source creating uniformly distributed points.
 
         Args:
@@ -331,7 +360,6 @@ class RandomPointSource(gp.BatchProvider):
             self.random_point_generator = RandomPointGenerator(density=density)
         else:
             self.random_point_generator = random_point_generator
-        self.shrink_by = shrink_by
 
     def setup(self):
 
@@ -346,32 +374,30 @@ class RandomPointSource(gp.BatchProvider):
     def provide(self, request):
 
         roi = request[self.graph_key].roi
-        if self.shrink_by is not None:
-            roi = roi / self.shrink_by 
 
         random_points = self.random_point_generator.get_random_points(roi)
 
         batch = gp.Batch()
-        if self.shrink_by is None:
-            batch[self.graph_key] = gp.Graph(
-                [gp.Node(id=i, location=l) for i, l in random_points.items()],
-                [],
-                gp.GraphSpec(roi=roi))
-        else:
-            print(list(random_points.items()))
-            print(list(random_points.values())[0]* np.array(self.shrink_by))
-            # Put graph back into original roi
-            batch[self.graph_key] = gp.Graph(
-                [gp.Node(id=i, location=l)
-                 for i, l in random_points.items()],
-                [],
-                gp.GraphSpec(roi=roi))
+        batch[self.graph_key] = gp.Graph(
+            [gp.Node(id=i, location=l) for i, l in random_points.items()],
+            [],
+            gp.GraphSpec(roi=roi))
 
         return batch
 
 
 class PrepareBatch(gp.BatchFilter):
+    """
+        Prepares a batch of points for contrastive training.
+        
+        Finds the intersecting nodes, and then converts them
+        to unit locations by subtracting the offset and dividing
+        by raw's voxel size. Also adds the batch shape to the points.
 
+        If the locations should be 2D but aren't the is_2d flag
+        should be true and will only return the last 2 dims of 
+        the locations. 
+    """
     def __init__(
             self,
             raw_0, raw_1,
@@ -446,6 +472,18 @@ class PrepareBatch(gp.BatchFilter):
 
 
 class AddSpatialDim(gp.BatchFilter):
+    """
+        Adds a spatial dim of size 1 to the begining of the ROI.
+        Requests an upstream ROI with the first dim removed. 
+
+        Currently only works for Arrays.
+
+        Args:
+            
+            array (:class: ArrayKey):
+                
+                The array key to modify.
+    """
 
     def __init__(self, array):
         self.array = array
@@ -468,8 +506,6 @@ class AddSpatialDim(gp.BatchFilter):
 
         if self.array not in request:
             return
-
-        upstream_spec = self.get_upstream_provider().spec[self.array]
 
         request[self.array].roi = gp.Roi(
             self.__remove_dim(request[self.array].roi.get_begin()),
@@ -500,6 +536,16 @@ class AddSpatialDim(gp.BatchFilter):
 
 class AddChannelDim(gp.BatchFilter):
 
+    """
+        Adds a spatial dim of size 1 to the specified axis.
+
+        Args:
+            
+            array (:class: ArrayKey):
+                
+                The array key to modify.
+    """
+
     def __init__(self, array, axis=0):
         self.array = array
         self.axis = axis
@@ -510,7 +556,11 @@ class AddChannelDim(gp.BatchFilter):
             return
         batch[self.array].data = np.expand_dims(batch[self.array].data, self.axis)
 
+
 class RejectArray(gp.BatchFilter):
+    """
+        Rejects array if it's size is 0.
+    """
 
     def __init__(self, ensure_nonempty):
         self.ensure_nonempty = ensure_nonempty
@@ -631,13 +681,57 @@ class RandomMultiBranchSource(BatchProvider):
         return source.request_batch(request)
 
 class FillLocations(gp.BatchFilter):
+    """
+        Helper method to transfer points into a non-spatial array.
+        Converts locations into unit locations that start at 0.
+        Ex: [120, 500, 360] with voxel_size (10, 10, 10) and ponit
+        roi (20:140, 300:600, 300:600)
+
+        Then the unit location will be:
+
+                ([120, 500, 360] - (20, 300, 300)) / (10, 10, 10)
+            =   (10, 20, 6)
+
+        This is useful because we often want to use the points directly
+        with the underlying data they are points of eg Training. There
+        we no longer worry about voxel_size and so it is useful to deal
+        with it here.
+
+        Args:
+            
+            raw (:class: `gp.Array`):
+
+                The array to get the voxel size from
+
+            points (:class: `gp.Graph`):
+                
+                The graph containing the points that will be transfered.
+
+            locations (:class: `gp.Graph`):
+
+                The non-spatial array to transfer the point locations to.
+
+            is_2d (:class: `bool`):
+
+                Whether the given point locations should actually be 2d.
+                This is only useful when the points in the graph have 3
+                dims, but the 1st dim is a placeholder or represents the 
+                sample dimension. Seting is_2d to true will only add the
+                last two coordinates to the locations array.
+
+            max_points (:class: `int`):
+                
+                The maximum number of points to add to the locations array.
+                If max < the number of points they will be randomly chosen.
+
+    """
 
     def __init__(
             self,
             raw,
             points,
             locations,
-            is_2d,
+            is_2d=False,
             max_points=None):
         self.raw = raw
         self.points = points

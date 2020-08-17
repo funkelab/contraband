@@ -1,10 +1,8 @@
 import torch
 import funlib
 from funlib.learn.torch.models.conv4d import Conv4d
-from contraband.models.ContrastiveVolumeNet import (
-    SegmentationVolumeNet,
-    ContrastiveVolumeNet)
-from contraband.utils import load_model, get_output_shape
+from contraband.utils import get_output_shape
+
 
 class Unet(torch.nn.Module):
     def __init__(self):
@@ -36,7 +34,6 @@ class Unet(torch.nn.Module):
         self.out_channels = model_params["h_channels"] 
 
         self.out_shape = get_output_shape(self, [1, 1, *self.in_shape])
-
 
     def forward(self, raw):
         unet_out = self.unet.forward(raw)

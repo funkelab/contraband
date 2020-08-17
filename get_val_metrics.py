@@ -1,13 +1,17 @@
 import os
-import sys
 import argparse
 import pandas as pd
 from pprint import pprint
 
 
 if __name__ == '__main__':
-
-    parser = argparse.ArgumentParser(description='Process some integers.')
+    """
+        Gets all the validation metrics for validation run. 
+        Uses pandas multi_index with
+        "contrastive_comb", "seg_comb", "contrastive_ckpt", "seg_ckpt", "threshold"
+        as indicies
+    """
+    parser = argparse.ArgumentParser()
     parser.add_argument('-dataset')
     parser.add_argument('-exp')
     parser.add_argument('-checkpoints',
@@ -44,7 +48,6 @@ if __name__ == '__main__':
     for root, subdir, files in os.walk(logdir, topdown=False):
         dirs = root.split('/')
         if dirs[-1] == 'metrics' and (folders_to_ignore is None or dirs[-2] not in folders_to_ignore):
-            print(dirs)
             seg_ckpts = {}
             contrastive_comb = dirs[3]
             seg_comb = dirs[5]
