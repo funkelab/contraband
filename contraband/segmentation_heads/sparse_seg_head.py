@@ -27,7 +27,7 @@ class SparseSegHead(torch.nn.Module):
                     How many channels the output should have.
         """
         super().__init__()
-
+        
         self.name = "Sparse"
 
         self.in_channels = base_encoder.out_channels
@@ -98,6 +98,16 @@ class SparseSegHead(torch.nn.Module):
         """ Overrides the default eval method to reshape the linear weights
         into convolutional layers. Still provides the required torch
         functionality of eval.
+
+            Args:
+                
+                in_shape (`tuple`);
+
+                    Will override the current in_shape. This is useful when
+                    using a placaeholder base_encoder, since it will have an
+                    outshape of None which means this model will have an 
+                    inshape of None. To set eval the inshape will need to be
+                    given in this case.
         """
         conv = {2: torch.nn.Conv2d, 3: torch.nn.Conv3d, 4: Conv4d}[self.dims]
 

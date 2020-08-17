@@ -16,6 +16,13 @@ logger = logging.getLogger(__name__)
 
 
 class SparseBasline():
+    """
+        This is the pipeline we will use for training the sparse_seg_head
+        on the baselines. There needs to be a separate one because it has
+        to be trainied end to end, requiring the random Roi selection and
+        augmentations. This is very similar to the normal segmentation 
+        pipeline.
+    """
     def __init__(self, params, logdir, log_every=1):
 
         self.params = params
@@ -116,7 +123,7 @@ class SparseBasline():
         snapshot_request = gp.BatchRequest()
         snapshot_request[emb] = gp.ArraySpec(
             roi=gp.Roi((0, ) * in_shape.dims(),
-                       gp.Coordinate((*model.base_encoder.out_shape[2:], )) *
+                       gp.Coordinate((*model.base_encoder.out_shape[2:],)) *
                        out_voxel_size))
 
         source = (
@@ -149,6 +156,10 @@ class SparseBasline():
 
         pipeline = (
             source +
+            # Batches seem to be rejected because points are chosen near the
+            # edge of the points ROI and the augmentations remove them. 
+            # TODO: Figure out if this is an actual issue, and if anything can 
+            # be done. 
             gp.Reject(ensure_nonempty=points) +
             SetDtype(gt_labels, np.int64) +
             # raw      : (source_roi)

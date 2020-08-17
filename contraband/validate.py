@@ -10,6 +10,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 def insert_dim(a, s, dim=0):
     return a[:dim] + (s, ) + a[dim:]
 

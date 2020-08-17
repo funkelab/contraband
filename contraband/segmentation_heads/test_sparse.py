@@ -2,8 +2,8 @@ import torch
 import numpy as np
 
 from contraband.segmentation_heads.sparse_seg_head import SparseSegHead
-from contraband.models.Unet import Unet
-from contraband.models.ContrastiveVolumeNet import SegmentationVolumeNet
+from contraband.models.unet import Unet
+from contraband.models.contrastive_volume_net import SegmentationVolumeNet
 import contraband.param_mapping as mapping
 
 emb = torch.rand((4, 6, 3, 3, 3))
