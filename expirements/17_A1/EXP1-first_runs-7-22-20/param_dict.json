@@ -1,0 +1,85 @@
+{
+  "pipeline": "standard",
+
+  "model": [{
+      "model": "unet",
+      "in_shape": [14, 260, 260],
+
+      "in_channels": 1,
+      "num_fmaps": 12,
+      "fmap_inc_factors": 6,
+      "downsample_factors": [[1, 2, 2], [1, 2, 2], [1, 2, 2]],
+      "kernel_size_down": [[[1, 3, 3], [3, 3, 3]], [[1, 3, 3], [1, 3, 3]]],
+      "kernel_size_down_repeated":  2,
+      "kernel_size_up": [[[1, 3, 3], [3, 3, 3]], [[1, 3, 3], [1, 3, 3]], [[1, 3, 3], [3, 3, 3]]],
+      "kernel_size_up_repeated": 1,
+      "constant_upsample": true,
+
+      "h_channels": 6,
+      "contrastive_out_channels": 6
+     }],
+
+  "contrastive": {
+      "data_file": ["data/ctc/17_1A.zarr"],
+      "dataset": [["train/raw", "validate/raw"]],
+      "optimizer": ["adam"],
+      "lr": [1e-5],
+      "num_iterations": [300000],
+      "elastic_params": [{
+	"control_point_spacing": [1, 10, 10],
+	"jitter_sigma": [0.01, 0.1, 0.1],
+	"rotation_interval": [0, "pi / 2"]
+      }],
+      "blur_params": [{"sigma": [0.5, 0.5, 0.5]}],
+      "simple_params": [{
+                "mirror_only": [1, 2],
+                "transpose_only":[1, 2]
+      }],
+      "noise_params": [{
+	      "var": 0.00001
+      }],
+      "elastic": [true],
+      "blur": [true],
+      "simple": [true],
+      "noise": [true],
+      "norm_factor": [0.001],
+      "save_every": [50000],
+
+      "point_density": [1e-8, 5e-8]
+  },
+  "seg": {
+      "data_file": ["data/ctc/17_1A.zarr"],
+      "dataset": [{
+	      "train": {"raw": "train/raw", "gt": "train/gt"},
+	      "validate": {"raw": "validate/raw", "gt": "validate/gt"}
+      	}
+      ],
+      "batch_size": [4],
+      "optimizer": ["adam"],
+      "lr": [1e-5],
+      "num_iterations": [7],
+      "elastic_params": [{
+	"control_point_spacing": [1, 10, 10],
+	"jitter_sigma": [0.0, 0.1, 0.1],
+	"rotation_interval": [0, "pi / 2"]
+      }],
+      "blur_params": [{"sigma": [0, 1, 1]}],
+      "simple_params": [{
+                "mirror_only": [1, 2],
+                "transpose_only":[1, 2]
+      }],
+      "noise_params": [{
+	      "var": 0.000001
+      }],
+      "elastic": [true],
+      "blur": [true],
+      "simple": [true],
+      "noise": [true],
+      "seg_head": ["SimpleSegHead"],
+      "thresholds": [[1.0]],
+      "norm_factor": [0.001],
+      "save_every": [3],
+
+      "seg_out_channels": [3]
+  }
+}
