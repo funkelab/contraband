@@ -33,29 +33,29 @@ For each $k$ (amount of training data), each dataset should be split into:
 	expirements
 	|--dataset name/
 	   |--EXPn-short_desc-month-day-year/
-		  |--param_dict.json
-		  |__combination-0/
-		  |   ...
+	      |--param_dict.json
+	      |__combination-0/
+	      |   ...
 	      |--combination-n
 	         |--contrastive
 		        |--histpy.npy
 		        |--checkpionts/
 		        |--snapshots/
-		     |--seg/
-		        |--copntrastive_ckpt1/
-			    |...
-			    |--contrastive_ckptn/
-			       |--histpy.npy
-			       |--checkpoints/
-			       |--snapshots/
-			       |--metrics/
-			       |  |--metrics_$checkpoint_num.csv
-			       | --samples
-			       |  |--sample_$checkpoint_num.zarr
-		   |--emb (optional)
-		      |--contrastive_ckptn
-		         |--dataset type e.g. train,validate,test
-		            |--raw_embs.zarr
+		 |--seg/
+	            |--copntrastive_ckpt1/
+		    |...
+		    |--contrastive_ckptn/
+		       |--histpy.npy
+		       |--checkpoints/
+		       |--snapshots/
+		       |--metrics/
+		       |  |--metrics_$checkpoint_num.csv
+		       | --samples
+		       |  |--sample_$checkpoint_num.zarr
+		 |--emb (optional)
+		    |--contrastive_ckptn
+		       |--dataset type e.g. train,validate,test
+		          |--raw_embs.zarr
 #### What are combinations?
 Combinations refer to the hyper parameters that each run uses. Each combination is a unique combination of the hyperparmetrs specified in the param_dict.json in each experiment.
 
@@ -84,7 +84,7 @@ Base nets:
 
 Segmentation heads:
 * `SimpleSegHead` this is just a simple MLP on top of the base encoder
-* `SparseSegHead` This set head is to train on sparse amounts of GT by using torch linear layers. It takes in embeddings and points and gives its predictions only on those points. Alternatively, you can give it a list of embeddings and it will give predictions directly on those. Can transform it's weights to convolutional layers during evaluation.
+* `SparseSegHead` This seg head is to train on sparse amounts of GT by using torch linear layers. It takes in embeddings and points and gives its predictions only on those points. Alternatively, you can give it a list of embeddings and it will give predictions directly on those. Can transform it's weights to convolutional layers during evaluation.
 
 Pipelines:
 All pipelines should work with 2D and 3D data.
@@ -92,20 +92,20 @@ All pipelines should work with 2D and 3D data.
 * `Segmentation` This pipeline is to train the segmentation head.
 * `SparseSH` This pipeline trains the SparseSegHead on pre-computed embeddings
 * `SparseBasline` This pipeline is to train an end to end baseline using the SparseSegHead. This essentially combines the functionally of the `Segmentation` and `SparseSH` pipelines.
-### Modes
-Contraband is centered around 4 different modes. 
+### Scripts
+Contraband is has 4 different scripts. 
 
-#### `contrastive` mode
-This mode is for contrastively training models.
-This mode uses the `contrastive` and `model` parameter dictionarys.
-#### `seg` mode
-This mode is for training the segmentation head (or baselines). This mode uses the `seg` param dict to get number of combinations, but also
+#### `train_contrastive.py` script
+This script is for contrastively training models.
+This script uses the `contrastive` and `model` parameter dictionarys.
+#### `train_seg.py` script
+This script is for training the segmentation head (or baselines). This script uses the `seg` param dict to get number of combinations, but also
 uses the `model` dict to make baseline model.
-#### `val` mode
-This mode is used for make predictions on validation data and generation segmentations. Currently can only do watershed -> agglomeration to get results. Returns results as 
+#### `validate.py` script
+This script is used for make predictions on validation data and generation segmentations. Currently can only do watershed -> agglomeration to get results. Returns results as 
 VOI Sum. Uses the segmentation param dict.
-#### `emb` mode
-This mode will generate the embeddings (h) for a dataset using a trained contrastive modelto be used layer in the sparse segmentation head.
+#### `make_embs.py` script
+This script will generate the embeddings (h) for a dataset using a trained contrastive modelto be used layer in the sparse segmentation head.
 
 ### How to use
 Run command 

@@ -1,3 +1,4 @@
+import sys
 import os
 import torch
 import logging
@@ -24,7 +25,6 @@ def load_model(model, prefix, checkpoint_file, freeze_model=False):
     """
     checkpoint = torch.load(checkpoint_file)
     loaded_dict = checkpoint['model_state_dict']
-    print(loaded_dict.keys())
     n_clip = len(prefix)
     adapted_dict = {k[n_clip:]: v for k, v in loaded_dict.items() 
                     if k.startswith(prefix)}
@@ -87,7 +87,6 @@ def get_checkpoints(path, match=None, white_list=[]):
                 Ex: you only want checkpoints 1 and 3, then checkpoint 2 will
                 be skiped if given a list of [1, 3].
     """
-    print(path)
     if match is None:
         checkpoints = [filename for filename in os.listdir(path)]
     else:
@@ -96,8 +95,6 @@ def get_checkpoints(path, match=None, white_list=[]):
             checkpoints = [filename for filename in checkpoints
                            if any(checkpoint in filename for checkpoint in white_list)]
     checkpoints.sort()
-
-    print(checkpoints)
 
     return checkpoints
 
@@ -182,14 +179,5 @@ def save_zarr(data, zarr_file, ds, roi, voxel_size=(1, 1, 1),
     dataset.data[:] = data
 
 
-def log_params(curr_log_dir, index, root_handler, params):
-    """
-        Logs the parameters given.
-    """
-    logger = create_logger(curr_log_dir, index=index)
-    logger.addHandler(root_handler)
 
-    logger.info("Current log dir: " + curr_log_dir)
-    logger.info('Training with parameter combination ' + str(index))
-    logger.info("With parameters: " + str(params[index]))
-    logger.info("")
+
